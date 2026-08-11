@@ -344,6 +344,13 @@ let systemInitialized=false;
     document.addEventListener('click',e=>{
       const openBtn=e.target.closest('[data-modal-target="quote-modal"]');
       if (openBtn) {
+        // Nav "Get a quote" CTA should navigate to /get-a-quote (or request-a-quote),
+        // not open the quote cart modal. Keep modal for add-to-quote / cart triggers.
+        const href = (openBtn.getAttribute('href') || '').trim();
+        const goesToQuotePage = /(?:^|\/)(get-a-quote|request-a-quote)(?:\/|$|\.html|\?|#)/i.test(href);
+        if (goesToQuotePage && !openBtn.hasAttribute('data-add-quote')) {
+          return;
+        }
         e.preventDefault();
         if (openBtn.hasAttribute('data-add-quote')) addProductToCart(openBtn);
         openQuoteModal();
