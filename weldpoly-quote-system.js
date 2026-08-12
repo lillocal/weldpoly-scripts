@@ -64,8 +64,11 @@ let systemInitialized=false;
       // Hide leftover part template description lines for Other
       const content = input.closest('.quote_item_content');
       if (content) {
-        content.querySelectorAll('[data-quote-part-code], [data-quote-part-machine]').forEach((el) => {
-          if (el !== input) el.style.display = 'none';
+        content.querySelectorAll('p, [data-quote-part-code], [data-quote-part-machine], .quote_item-description, .spare-part-code').forEach((el) => {
+          if (el === input) return;
+          if (el.hasAttribute('data-quote-title') || el.hasAttribute('data-quote-part-name') || el.classList.contains('spare-part-name')) return;
+          if (el.contains(input)) return;
+          el.style.display = 'none';
         });
       }
       if (focus || item.needsOtherDescription) {
