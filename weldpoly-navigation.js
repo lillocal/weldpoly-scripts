@@ -17,34 +17,64 @@
       item.style.transitionDelay = `${index * 0.05}s`;
     });
 
-    document.querySelectorAll('[data-navigation-toggle="toggle"]').forEach(toggleBtn => {
-      toggleBtn.addEventListener('click', () => {
-        const navStatusEl = document.querySelector('[data-navigation-status]');
-        if (!navStatusEl) return;
-        if (navStatusEl.getAttribute('data-navigation-status') === 'not-active') {
-          navStatusEl.setAttribute('data-navigation-status', 'active');
-        } else {
-          navStatusEl.setAttribute('data-navigation-status', 'not-active');
-        }
-      });
-    });
+    const getNavStatusEl = () => document.querySelector('[data-navigation-status]');
 
-    document.querySelectorAll('[data-navigation-toggle="close"]').forEach(closeBtn => {
-      closeBtn.addEventListener('click', () => {
-        const navStatusEl = document.querySelector('[data-navigation-status]');
-        if (!navStatusEl) return;
-        navStatusEl.setAttribute('data-navigation-status', 'not-active');
+    const setNavStatus = (status) => {
+      const navStatusEl = getNavStatusEl();
+      if (!navStatusEl) return;
+      navStatusEl.setAttribute('data-navigation-status', status);
+      // Dark overlay should only capture clicks while the menu is open
+      document.querySelectorAll('.navigation__dark-bg').forEach((el) => {
+        el.style.pointerEvents = status === 'active' ? 'auto' : 'none';
       });
-    });
+    };
+
+    // Ensure closed menu never blocks the toggle hit-target
+    setNavStatus(getNavStatusEl()?.getAttribute('data-navigation-status') || 'not-active');
+
+    // Single delegated handler — avoids double-toggle when nested elements
+    // also carry data-navigation-toggle (e.g. MENU label inside the button).
+    document.addEventListener('click', (e) => {
+      const toggleBtn = e.target.closest('[data-navigation-toggle="toggle"]');
+      if (toggleBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const navStatusEl = getNavStatusEl();
+        if (!navStatusEl) return;
+        const next = navStatusEl.getAttribute('data-navigation-status') === 'not-active' ? 'active' : 'not-active';
+        setNavStatus(next);
+        return;
+      }
+
+      const closeBtn = e.target.closest('[data-navigation-toggle="close"]');
+      if (closeBtn) {
+        // Don't treat nested toggle clicks as close
+        if (e.target.closest('[data-navigation-toggle="toggle"]')) return;
+        setNavStatus('not-active');
+      }
+    }, true);
 
     document.addEventListener('keydown', e => {
       if (e.keyCode === 27) {
-        const navStatusEl = document.querySelector('[data-navigation-status]');
+        const navStatusEl = getNavStatusEl();
         if (!navStatusEl) return;
         if (navStatusEl.getAttribute('data-navigation-status') === 'active') {
-          navStatusEl.setAttribute('data-navigation-status', 'not-active');
+          setNavStatus('not-active');
         }
       }
+    });
+
+    // Make the whole toggle button (and label) receive clicks
+    document.querySelectorAll('.centered-nav__toggle, [data-navigation-toggle="toggle"]').forEach((el) => {
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      if (el.matches('.centered-nav__toggle')) {
+        el.style.position = el.style.position || 'relative';
+        el.style.zIndex = '20';
+      }
+      el.querySelectorAll('*').forEach((child) => {
+        child.style.pointerEvents = 'none';
+      });
     });
   }
 
