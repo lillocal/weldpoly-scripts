@@ -35,7 +35,7 @@ let systemInitialized=false;
     let cart = [];
 
     function isOtherSparePart(item) {
-      return !!(item && item.isSparePart && ((item.title || '').trim().toLowerCase() === 'other'));
+      return !!(item && item.isSparePart && (item.isOtherSparePart === true || (item.title || '').trim().toLowerCase() === 'other'));
     }
 
     function attachOtherDescriptionField(descNode, item, opts) {

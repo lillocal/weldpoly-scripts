@@ -2,6 +2,9 @@
  * Weldpoly Spare Parts — Add spare parts to quote
  * Load AFTER weldpoly-quote-system.js
  * Uses same cart; quote system renders modal. Triggers: [spare-part-add], .spare-part-qty-plus, checkbox in [spare-part-item]
+ *
+ * "Other" is a static UI option (not a CMS catalog item): hidden/removed from CMS lists,
+ * injected once at the end of each spare-parts list, and collects a one-sentence description in the quote cart.
  */
 (function(){
 'use strict';
@@ -124,7 +127,7 @@ function isSparePartInCart(container){
 }
 
 function updateSparePartButtonsState(){
-  const sel='[spare-part-item], .spare-part-item, .collection_spare-part-item, .list-spare_parts .w-dyn-item';
+  const sel='[spare-part-item], .spare-part-item, .collection_spare-part-item, .list-spare_parts .w-dyn-item, [data-quote-other-option]';
   document.querySelectorAll(sel).forEach(container=>{
     const trigger=container.querySelector('[spare-part-add]')||container.querySelector('.spare-part-qty-plus')||container.querySelector('.spare-part-checkbox input[type="checkbox"]')||container.querySelector('.spare-part-checkbox')||container.querySelector('.spare-part-check')||container.querySelector('input[type="checkbox"]');
     if(!trigger)return;
@@ -147,7 +150,7 @@ function updateSparePartButtonsState(){
 window.updateSparePartButtonsState=updateSparePartButtonsState;
 
 function getSparePartContainerFromTrigger(trigger){
-  let c=trigger.closest('[spare-part-item]')||trigger.closest('.spare-part-item')||trigger.closest('.collection_spare-part-item');
+  let c=trigger.closest('[data-quote-other-option]')||trigger.closest('[spare-part-item]')||trigger.closest('.spare-part-item')||trigger.closest('.collection_spare-part-item');
   if(!c){const d=trigger.closest('.w-dyn-item'); if(d&&(d.closest('.list-spare_parts')||d.closest('.spare-part-form')))c=d;}
   return c;
 }
@@ -182,10 +185,13 @@ function toggleSparePartInQuote(trigger){
       if(sizeRange)prod.productSizeRange=sizeRange;
       merged.push(prod);
     }
-    const other=isOtherSparePart(title);
-    const sp={title,description:other?'':description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
+    const other=isOtherSparePart(title)||container.hasAttribute('data-quote-other-option');
+    const sp={title:other?'Other':title,description:other?'':description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
     if(parentSlug)sp.parentProductSlug=parentSlug;
-    if(other)sp.needsOtherDescription=true;
+    if(other){
+      sp.needsOtherDescription=true;
+      sp.isOtherSparePart=true;
+    }
     merged.push(sp);
     setCart(merged);
     updateSparePartButtonsState();
@@ -214,34 +220,93 @@ function getCheckboxFromClickTarget(target){
   return null;
 }
 
+function getSparePartsListRoots(){
+  const roots=[];
+  document.querySelectorAll('.list-spare_parts').forEach(el=>{
+    if(el.classList.contains('w-dyn-items')||el.getAttribute('role')==='list')roots.push(el);
+    else{
+      const nested=el.querySelector('.w-dyn-items, [role="list"]');
+      roots.push(nested||el);
+    }
+  });
+  document.querySelectorAll('[data-spare-parts-list]').forEach(el=>{
+    if(!roots.includes(el))roots.push(el);
+  });
+  return roots;
+}
 
-function moveOtherSparePartsToEnd(){
-  const lists=document.querySelectorAll('.list-spare_parts, [data-spare-parts-list]');
-  lists.forEach(list=>{
-    const items=[...list.querySelectorAll(':scope > .w-dyn-item, :scope > [role="list"] > .w-dyn-item')];
-    if(!items.length){
-      const nested=list.querySelector('.w-dyn-items')||list;
-      const dyn=[...nested.querySelectorAll(':scope > .w-dyn-item')];
-      if(!dyn.length)return;
-      const others=[],rest=[];
-      dyn.forEach(el=>{
-        const title=getSparePartTitle(el);
-        (isOtherSparePart(title)?others:rest).push(el);
-      });
-      if(!others.length)return;
-      const parent=dyn[0].parentElement;
-      [...rest,...others].forEach(el=>parent.appendChild(el));
+/** Remove CMS placeholder rows named "Other" — they are not real catalog parts. */
+function removeCmsOtherItems(){
+  const candidates=document.querySelectorAll('.list-spare_parts .w-dyn-item, .list-spare_parts .collection_spare-part-item, [data-spare-parts-list] .w-dyn-item');
+  candidates.forEach(el=>{
+    if(el.hasAttribute('data-quote-other-option'))return;
+    if(isOtherSparePart(getSparePartTitle(el)))el.remove();
+  });
+}
+
+function buildStaticOtherNode(template){
+  let node;
+  if(template){
+    node=template.cloneNode(true);
+  }else{
+    node=document.createElement('div');
+    node.className='collection_spare-part-item';
+    node.setAttribute('role','listitem');
+    node.innerHTML='<div spare-part-item="" class="spare-part-item"><div spare-part-content="" class="spare-part-content-wrap"><div spare-part-name="" class="spare-part-name">Other</div></div><div class="spare-part-quantity-control"><label spare-part-add="" class="w-checkbox spare-part-checkbox"><div class="w-checkbox-input w-checkbox-input--inputType-custom spare-part-check"></div><input type="checkbox" name="quote-other" data-name="Other" style="opacity:0;position:absolute;z-index:-1"/><span class="spare-part-checkbox_name w-form-label">Other</span></label></div></div>';
+  }
+  node.removeAttribute('id');
+  node.setAttribute('data-quote-other-option','true');
+  node.classList.add('is-quote-other-option');
+  node.classList.remove('w-dyn-item');
+
+  const nameEl=node.querySelector('.spare-part-name,[spare-part-name]');
+  if(nameEl)nameEl.textContent='Other';
+
+  // Strip catalog-only fields from the clone
+  node.querySelectorAll('[spare-part-code],[spare-part-machine],[spare-part-description],.spare-part-divisor').forEach(el=>el.remove());
+  node.querySelectorAll('.spare-part-code').forEach(el=>{
+    if(!el.hasAttribute('spare-part-name')&&!el.classList.contains('spare-part-name'))el.remove();
+  });
+
+  const input=node.querySelector('input[type="checkbox"]');
+  if(input){
+    input.removeAttribute('id');
+    input.name='quote-other';
+    input.setAttribute('data-name','Other');
+    input.checked=false;
+  }
+  const labelSpan=node.querySelector('.spare-part-checkbox_name, .w-form-label');
+  if(labelSpan){
+    labelSpan.textContent='Other';
+    labelSpan.removeAttribute('for');
+  }
+  return node;
+}
+
+/** Inject a single static Other option at the end of each spare-parts list. */
+function ensureStaticOtherOption(){
+  getSparePartsListRoots().forEach(list=>{
+    if(!list||!list.isConnected)return;
+    const existing=list.querySelector(':scope > [data-quote-other-option]');
+    if(existing){
+      list.appendChild(existing);
       return;
     }
-    const others=[],rest=[];
-    items.forEach(el=>{
-      const title=getSparePartTitle(el);
-      (isOtherSparePart(title)?others:rest).push(el);
-    });
-    if(!others.length)return;
-    const parent=items[0].parentElement;
-    [...rest,...others].forEach(el=>parent.appendChild(el));
+    const template=list.querySelector(':scope > .w-dyn-item, :scope > .collection_spare-part-item, :scope > [spare-part-item]');
+    const node=buildStaticOtherNode(template);
+    list.appendChild(node);
+
+    // If Webflow empty-state is showing because CMS list was empty, keep Other visible
+    const empty=list.parentElement&&list.parentElement.querySelector('.w-dyn-empty');
+    if(empty)empty.style.display='none';
+    list.style.display='';
   });
+}
+
+function syncOtherOptionInLists(){
+  removeCmsOtherItems();
+  ensureStaticOtherOption();
+  updateSparePartButtonsState();
 }
 
 function init(){
@@ -266,11 +331,10 @@ function init(){
   }
 
   document.addEventListener('quoteCartUpdated',()=>updateSparePartButtonsState());
-  moveOtherSparePartsToEnd();
-  updateSparePartButtonsState();
-  // Finsweet/CMS may re-render; keep Other last
-  setTimeout(moveOtherSparePartsToEnd,300);
-  setTimeout(moveOtherSparePartsToEnd,1000);
+  syncOtherOptionInLists();
+  // CMS/Finsweet may re-render list items after first paint
+  setTimeout(syncOtherOptionInLists,300);
+  setTimeout(syncOtherOptionInLists,1000);
 }
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,100));
