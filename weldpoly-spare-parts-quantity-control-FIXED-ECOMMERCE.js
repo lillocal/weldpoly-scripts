@@ -110,6 +110,7 @@ function openQuoteModal(){
 }
 
 const norm=s=>(s||'').trim().toLowerCase();
+const isOtherSparePart=title=>norm(title)==='other';
 
 function isSparePartInCart(container){
   const title=getSparePartTitle(container);
@@ -181,13 +182,21 @@ function toggleSparePartInQuote(trigger){
       if(sizeRange)prod.productSizeRange=sizeRange;
       merged.push(prod);
     }
-    const sp={title,description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
+    const other=isOtherSparePart(title);
+    const sp={title,description:other?'':description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
     if(parentSlug)sp.parentProductSlug=parentSlug;
+    if(other)sp.needsOtherDescription=true;
     merged.push(sp);
     setCart(merged);
     updateSparePartButtonsState();
     if(typeof window.updateNavQty==='function')window.updateNavQty();
     openQuoteModal();
+    if(other){
+      setTimeout(()=>{
+        const input=document.querySelector('[data-quote-other-description]');
+        if(input){input.focus();try{input.select();}catch(_){}}
+      },120);
+    }
   }
 }
 
@@ -203,6 +212,36 @@ function getCheckboxFromClickTarget(target){
     if(cb)return cb;
   }
   return null;
+}
+
+
+function moveOtherSparePartsToEnd(){
+  const lists=document.querySelectorAll('.list-spare_parts, [data-spare-parts-list]');
+  lists.forEach(list=>{
+    const items=[...list.querySelectorAll(':scope > .w-dyn-item, :scope > [role="list"] > .w-dyn-item')];
+    if(!items.length){
+      const nested=list.querySelector('.w-dyn-items')||list;
+      const dyn=[...nested.querySelectorAll(':scope > .w-dyn-item')];
+      if(!dyn.length)return;
+      const others=[],rest=[];
+      dyn.forEach(el=>{
+        const title=getSparePartTitle(el);
+        (isOtherSparePart(title)?others:rest).push(el);
+      });
+      if(!others.length)return;
+      const parent=dyn[0].parentElement;
+      [...rest,...others].forEach(el=>parent.appendChild(el));
+      return;
+    }
+    const others=[],rest=[];
+    items.forEach(el=>{
+      const title=getSparePartTitle(el);
+      (isOtherSparePart(title)?others:rest).push(el);
+    });
+    if(!others.length)return;
+    const parent=items[0].parentElement;
+    [...rest,...others].forEach(el=>parent.appendChild(el));
+  });
 }
 
 function init(){
@@ -227,7 +266,11 @@ function init(){
   }
 
   document.addEventListener('quoteCartUpdated',()=>updateSparePartButtonsState());
+  moveOtherSparePartsToEnd();
   updateSparePartButtonsState();
+  // Finsweet/CMS may re-render; keep Other last
+  setTimeout(moveOtherSparePartsToEnd,300);
+  setTimeout(moveOtherSparePartsToEnd,1000);
 }
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,100));

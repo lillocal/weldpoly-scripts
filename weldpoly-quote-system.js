@@ -16,6 +16,14 @@ let systemInitialized=false;
     if (systemInitialized) return;
     systemInitialized = true;
 
+    // Style for Other spare-part description field in quote cart
+    if (!document.getElementById('quote-other-desc-style')) {
+      const st = document.createElement('style');
+      st.id = 'quote-other-desc-style';
+      st.textContent = '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}';
+      document.head.appendChild(st);
+    }
+
     const modalGroup = document.querySelector('[data-modal-group-status]');
     const quoteModal = document.querySelector('[data-modal-name="quote-modal"]');
     const quoteContent = quoteModal?.querySelector('.quote_modal-content');
@@ -26,9 +34,51 @@ let systemInitialized=false;
     const actionsBlock = quoteModal?.querySelector('.quote_modal-content-bottom');
     let cart = [];
 
-    function saveCart() {
+    function isOtherSparePart(item) {
+      return !!(item && item.isSparePart && ((item.title || '').trim().toLowerCase() === 'other'));
+    }
+
+    function attachOtherDescriptionField(descNode, item, opts) {
+      if (!descNode) return null;
+      const focus = !!(opts && opts.focus);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 200;
+      input.className = ((descNode.className || '') + ' quote_other-description').trim();
+      input.setAttribute('data-quote-other-description', '');
+      input.setAttribute('aria-label', 'Describe the part you need');
+      input.placeholder = 'Describe the part you need (one sentence)';
+      input.value = item.description || '';
+      input.addEventListener('input', () => {
+        item.description = input.value;
+        if (item.description.trim()) delete item.needsOtherDescription;
+        saveCart({ silent: true });
+      });
+      input.addEventListener('blur', () => {
+        item.description = (input.value || '').trim();
+        if (item.description) delete item.needsOtherDescription;
+        saveCart({ silent: true });
+        renderRequestQuotePageList();
+      });
+      descNode.replaceWith(input);
+      // Hide leftover part template description lines for Other
+      const content = input.closest('.quote_item_content');
+      if (content) {
+        content.querySelectorAll('[data-quote-part-code], [data-quote-part-machine]').forEach((el) => {
+          if (el !== input) el.style.display = 'none';
+        });
+      }
+      if (focus || item.needsOtherDescription) {
+        setTimeout(() => { try { input.focus(); } catch (_) {} }, 50);
+      }
+      return input;
+    }
+
+
+    function saveCart(opts) {
       localStorage.setItem(CART_KEY, JSON.stringify(cart));
       try { localStorage.setItem(CART_SAVED_AT_KEY, String(Date.now())); } catch (_) {}
+      if (opts && opts.silent) return;
       try { document.dispatchEvent(new CustomEvent('quoteCartUpdated')); } catch (_) {}
     }
 
@@ -168,8 +218,8 @@ let systemInitialized=false;
       });
       const templatePart = templatePartItem || templateItem;
       const order = buildCartOrder();
-      const titleSel=['[data-quote-title]','.quote_part-item-title','.quote_part-item_title','.quote_item-title','.quote_part-title','.quote_item_content p:first-child','.quote_item_content > *:first-child'];
-      const descSel=['[data-quote-description]','.quote_part-item-description','.quote_part-item_description','.quote_item-description','.quote_part-description','.quote_item_content p:nth-of-type(2)','.quote_item_content p:last-of-type','.quote_item_content > *:nth-child(2)','.quote_item_content > *:last-child'];
+      const titleSel=['[data-quote-title]','[data-quote-part-name]','.quote_part-item-title','.quote_part-item_title','.quote_item-title','.quote_part-title','.quote_item_content p:first-child','.quote_item_content > *:first-child'];
+      const descSel=['[data-quote-description]','[data-quote-part-machine]','[data-quote-part-code]','.quote_part-item-description','.quote_part-item_description','.quote_item-description','.quote_part-description','.quote_item_content p:nth-of-type(2)','.quote_item_content p:last-of-type','.quote_item_content > *:nth-child(2)','.quote_item_content > *:last-child'];
 
       const ins=emptyState||null;
       order.forEach(({item,idx})=>{
@@ -189,8 +239,13 @@ let systemInitialized=false;
         const descText=item.description||'';
         const sizeText=item.productSizeRange||'';
         const fullDesc=sizeRangeNode ? descText : (sizeText && descText ? sizeText+'\n'+descText : (sizeText||descText));
-        if (descNode) descNode.textContent = fullDesc;
-        if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
+        if (isOtherSparePart(item)) {
+          attachOtherDescriptionField(descNode, item, { focus: !!item.needsOtherDescription });
+          if (sizeRangeNode) sizeRangeNode.style.display = 'none';
+        } else {
+          if (descNode) descNode.textContent = fullDesc;
+          if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
+        }
         if (qtyEl) {
           const q = item.qty || 1;
           qtyEl.textContent = q;
@@ -244,8 +299,14 @@ let systemInitialized=false;
         if (tEl) tEl.textContent = item.title || '';
         const descT=item.description||'', sizeT=item.productSizeRange||'';
         const fullD=sEl ? descT : (sizeT && descT ? sizeT+'\n'+descT : (sizeT||descT));
-        if (dEl) dEl.textContent = fullD;
-        if (sEl) sEl.textContent = sizeT;
+        if (isOtherSparePart(item)) {
+          const pageDesc = dEl || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
+          attachOtherDescriptionField(pageDesc, item, { focus: false });
+          if (sEl) sEl.style.display = 'none';
+        } else {
+          if (dEl) dEl.textContent = fullD;
+          if (sEl) sEl.textContent = sizeT;
+        }
         if (qEl) { const q = item.qty || 1; qEl.textContent = q; const i = qEl.querySelector('div'); if (i) i.textContent = q; }
         const plusBtn = clone.querySelector('.quote_plus');
         const minusBtn = clone.querySelector('.quote_minus');
