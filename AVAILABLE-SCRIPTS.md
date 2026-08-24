@@ -180,3 +180,8 @@ On the get-a-quote page, the quote system auto-renders the cart list when these 
 ### Navigation
 - ✅ Updates quantity badge in the browser
 - ✅ Redirects to `/get-a-quote` on submit
+
+### weldpoly-category-filters.js
+Capability-match diameter search (min–max cover), unit-aware Inch→mm, name search for non-numeric queries, and hides Metric/Inch filter on Workshop Saws / Saddle Fusion / Debeaders.
+
+https://cdn.jsdelivr.net/gh/lillocal/weldpoly-scripts@main/weldpoly-category-filters.js
