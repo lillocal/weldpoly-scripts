@@ -3,12 +3,22 @@
  * Fixes stacked/stuck hover images:
  * - Clears previous clones on row change and on mouseleave
  * - Anchors preview to the hovered row (does not float with the cursor across the page)
+ * - Replaces wraps to drop the broken inline page script listeners
  */
 (function () {
   'use strict';
 
+  function neutralizeLegacy() {
+    document.querySelectorAll('[data-follower-wrap]').forEach(function (wrap) {
+      var clone = wrap.cloneNode(true);
+      if (wrap.parentNode) wrap.parentNode.replaceChild(clone, wrap);
+    });
+  }
+
   function initPreviewFollower() {
     if (typeof gsap === 'undefined') return;
+
+    neutralizeLegacy();
 
     document.querySelectorAll('[data-follower-wrap]').forEach(function (wrap) {
       var collection = wrap.querySelector('[data-follower-collection]');
@@ -16,6 +26,9 @@
       var follower = wrap.querySelector('[data-follower-cursor]');
       var followerInner = wrap.querySelector('[data-follower-cursor-inner]');
       if (!collection || !follower || !followerInner || !items.length) return;
+
+      // Drop any leftover clones from the legacy script
+      followerInner.innerHTML = '';
 
       var prevIndex = null;
       var activeItem = null;
@@ -106,9 +119,14 @@
     });
   }
 
+  function start() {
+    // Run after the page footer inline script has attached (and after GSAP is available)
+    setTimeout(initPreviewFollower, 0);
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initPreviewFollower);
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    initPreviewFollower();
+    start();
   }
 })();
