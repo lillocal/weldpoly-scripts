@@ -103,32 +103,33 @@ let systemInitialized=false;
       const list = Array.isArray(items) ? items : [];
       if (!list.length) return 'No items added';
 
-      const lines = ['QUOTE ITEMS', ''];
-      list.forEach((item, index) => {
+      // Single-line-friendly: Webflow Forms collapses newlines in the inbox view.
+      // Keep each item compact and separate items with " | ".
+      const parts = list.map((item, index) => {
         const n = index + 1;
         const qty = item && item.qty ? item.qty : 1;
         const title = ((item && item.title) || 'Unnamed item').trim();
         const desc = ((item && item.description) || '').trim();
         const parent = ((item && (item.parentProductTitle || item.parentProductSlug)) || '').trim();
         const size = ((item && item.productSizeRange) || '').trim();
-        const other = isOtherSparePart(item);
+        const bits = [];
 
-        if (other) {
-          lines.push(`${n}. Other${parent ? ` (for ${parent})` : ''}`);
-          lines.push(`   Note: ${desc || '(missing description)'}`);
+        if (isOtherSparePart(item)) {
+          bits.push(`${n}) Other${parent ? ` (for ${parent})` : ''}`);
+          bits.push(`Note: ${desc || '(missing description)'}`);
         } else if (item && item.isSparePart) {
-          lines.push(`${n}. ${title}${parent ? ` (for ${parent})` : ''}`);
-          if (desc) lines.push(`   Description: ${desc}`);
+          bits.push(`${n}) ${title}${parent ? ` (for ${parent})` : ''}`);
+          if (desc) bits.push(`Desc: ${desc}`);
         } else {
-          lines.push(`${n}. ${title}`);
-          if (size) lines.push(`   Size range: ${size}`);
-          else if (desc) lines.push(`   Description: ${desc}`);
+          bits.push(`${n}) ${title}`);
+          if (size) bits.push(`Size: ${size}`);
+          else if (desc) bits.push(`Desc: ${desc}`);
         }
-        lines.push(`   Quantity: ${qty}`);
-        lines.push('');
+        bits.push(`Qty: ${qty}`);
+        return bits.join(' — ');
       });
 
-      return lines.join('\n').trim();
+      return `QUOTE ITEMS: ${parts.join(' | ')}`;
     }
 
     function formatOtherDescriptions(items) {
@@ -137,9 +138,9 @@ let systemInitialized=false;
       return list.map((item, index) => {
         const parent = ((item.parentProductTitle || item.parentProductSlug) || '').trim();
         const desc = (item.description || '').trim();
-        const prefix = list.length > 1 ? `${index + 1}. ` : '';
+        const prefix = list.length > 1 ? `${index + 1}) ` : '';
         return `${prefix}${desc || '(missing description)'}${parent ? ` [for ${parent}]` : ''}`;
-      }).join('\n');
+      }).join(' | ');
     }
 
     function syncQuoteFormFields() {
