@@ -273,20 +273,38 @@ let systemInitialized=false;
     const normT=t=>(t||'').trim().toLowerCase().replace(/\s+/g,' ');
     function removeFromCart(item){
       loadCart();
-      if(item.isSparePart===true){
-        const i=cart.findIndex(c=>itemKey(c)===itemKey(item));
-        if(i>=0)cart.splice(i,1);
-      }else{
-        const productSlug=item.productSlug||'';
-        const productTitle=normT(item.title);
-        const spareMatchesProduct=(c)=>(c.isSparePart===true)&&(productSlug&&c.parentProductSlug===productSlug||normT(c.parentProductTitle)===productTitle);
-        const productMatches=(c)=>(!c.isSparePart)&&(productSlug&&c.productSlug===productSlug||normT(c.title)===productTitle);
-        const toRemove=cart.filter(c=>spareMatchesProduct(c)||productMatches(c));
-        if(toRemove.length>0){
-          console.log('[Weldpoly Quote] Removing product parent:',{title:item.title,slug:productSlug,removing:toRemove.length,items:toRemove.map(x=>({title:x.title,isSparePart:x.isSparePart,parentSlug:x.parentProductSlug}))});
-        }
-        cart=cart.filter(c=>!(spareMatchesProduct(c)||productMatches(c)));
+      // Machines and spare parts are independent lines: removing one never cascades to the other.
+      const i=cart.findIndex(c=>itemKey(c)===itemKey(item));
+      if(i>=0)cart.splice(i,1);
+      saveCart();
+      renderCart();
+      updateNavQty();
+      renderRequestQuotePageList();
+      refreshSparePartButtons();
+    }
+
+    function ensureQtyControls(clone) {
+      if (!clone || clone.querySelector('.quote_item-qty')) return;
+      const actions = clone.querySelector('.quote_item-actions');
+      if (!actions) return;
+      const src = templateItem && templateItem.querySelector('.quote_item-qty');
+      if (src) {
+        actions.insertBefore(src.cloneNode(true), actions.firstChild);
+        return;
       }
+      const wrap = document.createElement('div');
+      wrap.className = 'quote_item-qty';
+      wrap.innerHTML = '<div class="quote_minus" aria-label="Decrease quantity">−</div><div data-quote-number="" class="quote_number"><div>1</div></div><div class="quote_plus" aria-label="Increase quantity">+</div>';
+      actions.insertBefore(wrap, actions.firstChild);
+    }
+
+    function bumpQty(item, delta) {
+      loadCart();
+      const live = cart.find((c) => itemKey(c) === itemKey(item));
+      if (!live) return;
+      const next = (live.qty || 1) + delta;
+      if (next < 1) return;
+      live.qty = next;
       saveCart();
       renderCart();
       updateNavQty();
@@ -315,6 +333,7 @@ let systemInitialized=false;
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
         if (isSparePart) clone.classList.add('quote_part-item');
+        if (isSparePart) ensureQtyControls(clone);
 
         const titleNode=findInClone(clone,titleSel)||clone.querySelector('[data-quote-title]');
         const descNode=findInClone(clone,descSel)||clone.querySelector('[data-quote-description]');
@@ -347,8 +366,8 @@ let systemInitialized=false;
         const plusBtn = clone.querySelector('.quote_plus');
         const minusBtn = clone.querySelector('.quote_minus');
         const removeBtn = clone.querySelector('[data-quote-remove]');
-        if (plusBtn) plusBtn.addEventListener('click', () => { item.qty++; renderCart(); saveCart(); updateNavQty(); renderRequestQuotePageList(); refreshSparePartButtons(); });
-        if (minusBtn) minusBtn.addEventListener('click', () => { if (item.qty > 1) item.qty--; renderCart(); saveCart(); updateNavQty(); renderRequestQuotePageList(); refreshSparePartButtons(); });
+        if (plusBtn) plusBtn.addEventListener('click', () => bumpQty(item, 1));
+        if (minusBtn) minusBtn.addEventListener('click', () => bumpQty(item, -1));
         if (removeBtn) removeBtn.addEventListener('click', (e) => { e.preventDefault(); removeFromCart(item); });
         ins?quoteContent.insertBefore(clone,ins):quoteContent.appendChild(clone);
       });
@@ -380,6 +399,7 @@ let systemInitialized=false;
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
         if (item.isSparePart) clone.classList.add('quote_part-item');
+        if (item.isSparePart) ensureQtyControls(clone);
         const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('[data-quote-part-name]') || clone.querySelector('.quote_item-title');
         const dEl = clone.querySelector('[data-quote-description]') || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
         const sEl = clone.querySelector('[data-quote-size-range]');
@@ -399,8 +419,8 @@ let systemInitialized=false;
         const plusBtn = clone.querySelector('.quote_plus');
         const minusBtn = clone.querySelector('.quote_minus');
         const removeBtn = clone.querySelector('[data-quote-remove]');
-        if (plusBtn) plusBtn.addEventListener('click', () => { item.qty++; saveCart(); renderCart(); renderRequestQuotePageList(); updateNavQty(); refreshSparePartButtons(); });
-        if (minusBtn) minusBtn.addEventListener('click', () => { if (item.qty > 1) item.qty--; saveCart(); renderCart(); renderRequestQuotePageList(); updateNavQty(); refreshSparePartButtons(); });
+        if (plusBtn) plusBtn.addEventListener('click', () => bumpQty(item, 1));
+        if (minusBtn) minusBtn.addEventListener('click', () => bumpQty(item, -1));
         if (removeBtn) removeBtn.addEventListener('click', (e) => { e.preventDefault(); removeFromCart(item); });
         pageListContainer.appendChild(clone);
       });
