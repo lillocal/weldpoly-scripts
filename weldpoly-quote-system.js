@@ -584,6 +584,15 @@ let systemInitialized=false;
         }
         try { sessionStorage.setItem(QUOTE_SUBMIT_FLAG, 'true'); } catch (_) {}
       }, true);
+      // formdata fires when FormData is built — last reliable chance to set payload values.
+      form.addEventListener('formdata', (e) => {
+        syncQuoteFormFields();
+        try {
+          e.formData.set('quote-data', formatQuoteData(cart));
+          const otherText = formatOtherDescriptions(cart);
+          if (otherText) e.formData.set('other-description', otherText);
+        } catch (_) {}
+      });
       // Register late so we overwrite any legacy page inline formatQuoteData injectors.
       const bindLateSync = () => {
         form.addEventListener('submit', () => { syncQuoteFormFields(); });
