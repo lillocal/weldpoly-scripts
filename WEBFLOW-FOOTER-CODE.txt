@@ -16,6 +16,7 @@ WELDPOLY SCRIPTS (order matters) — sempre @main (última versão):
 <script src="https://cdn.jsdelivr.net/gh/francastudio/weldpoly-scripts@main/weldpoly-spare-parts-quantity-control-FIXED-ECOMMERCE.js" defer></script>
 <script src="https://cdn.jsdelivr.net/gh/francastudio/weldpoly-scripts@main/weldpoly-navigation.js" defer></script>
 <script src="https://cdn.jsdelivr.net/gh/francastudio/weldpoly-scripts@main/weldpoly-finsweet-sort.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/lillocal/weldpoly-scripts@main/weldpoly-category-filters.js" defer></script>
 
 ===========================================
 INSTRUCTIONS:
@@ -33,6 +34,7 @@ INSTRUCTIONS:
 3. weldpoly-spare-parts-quantity-control-FIXED-ECOMMERCE.js (add spare parts to quote - load AFTER quote-system)
 4. weldpoly-navigation.js (menu toggle + nav contrast)
 5. weldpoly-finsweet-sort.js (requires Finsweet Attributes - only on pages with lists)
+6. weldpoly-category-filters.js (capability-match diameter search + hide unit filter on some categories)
 
 ===========================================
 SCRIPT URLs:
