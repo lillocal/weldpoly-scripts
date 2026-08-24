@@ -99,9 +99,69 @@ let systemInitialized=false;
     }
 
 
+    function formatQuoteData(items) {
+      const list = Array.isArray(items) ? items : [];
+      if (!list.length) return 'No items added';
+
+      const lines = ['QUOTE ITEMS', ''];
+      list.forEach((item, index) => {
+        const n = index + 1;
+        const qty = item && item.qty ? item.qty : 1;
+        const title = ((item && item.title) || 'Unnamed item').trim();
+        const desc = ((item && item.description) || '').trim();
+        const parent = ((item && (item.parentProductTitle || item.parentProductSlug)) || '').trim();
+        const size = ((item && item.productSizeRange) || '').trim();
+        const other = isOtherSparePart(item);
+
+        if (other) {
+          lines.push(`${n}. Other${parent ? ` (for ${parent})` : ''}`);
+          lines.push(`   Note: ${desc || '(missing description)'}`);
+        } else if (item && item.isSparePart) {
+          lines.push(`${n}. ${title}${parent ? ` (for ${parent})` : ''}`);
+          if (desc) lines.push(`   Description: ${desc}`);
+        } else {
+          lines.push(`${n}. ${title}`);
+          if (size) lines.push(`   Size range: ${size}`);
+          else if (desc) lines.push(`   Description: ${desc}`);
+        }
+        lines.push(`   Quantity: ${qty}`);
+        lines.push('');
+      });
+
+      return lines.join('\n').trim();
+    }
+
+    function formatOtherDescriptions(items) {
+      const list = (Array.isArray(items) ? items : []).filter(isOtherSparePart);
+      if (!list.length) return '';
+      return list.map((item, index) => {
+        const parent = ((item.parentProductTitle || item.parentProductSlug) || '').trim();
+        const desc = (item.description || '').trim();
+        const prefix = list.length > 1 ? `${index + 1}. ` : '';
+        return `${prefix}${desc || '(missing description)'}${parent ? ` [for ${parent}]` : ''}`;
+      }).join('\n');
+    }
+
+    function syncQuoteFormFields() {
+      const hidden = document.querySelector('[data-quote-hidden], #quote-data, input[name="quote-data"]');
+      if (hidden) {
+        const formatted = formatQuoteData(cart);
+        if (hidden.value !== formatted) hidden.value = formatted;
+      }
+      // Optional dedicated field (Designer: name="other-description" or data-other-description-hidden)
+      const otherField = document.querySelector(
+        '[data-other-description-hidden], #other-description, input[name="other-description"], textarea[name="other-description"]'
+      );
+      if (otherField) {
+        const otherText = formatOtherDescriptions(cart);
+        if (otherField.value !== otherText) otherField.value = otherText;
+      }
+    }
+
     function saveCart(opts) {
       localStorage.setItem(CART_KEY, JSON.stringify(cart));
       try { localStorage.setItem(CART_SAVED_AT_KEY, String(Date.now())); } catch (_) {}
+      syncQuoteFormFields();
       if (opts && opts.silent) return;
       try { document.dispatchEvent(new CustomEvent('quoteCartUpdated')); } catch (_) {}
     }
@@ -507,6 +567,8 @@ let systemInitialized=false;
       const form = hidden ? hidden.closest('form') : null;
       if (!form) return;
       form.addEventListener('submit', (e) => {
+        // Always refresh hidden fields first (source of truth for Webflow Forms).
+        syncQuoteFormFields();
         // Block submit when an Other spare part has no description (last chance to capture detail).
         const missingOther = cart.filter(isOtherSparePart).filter((i) => !(i.description || '').trim());
         if (missingOther.length) {
@@ -522,6 +584,13 @@ let systemInitialized=false;
         }
         try { sessionStorage.setItem(QUOTE_SUBMIT_FLAG, 'true'); } catch (_) {}
       }, true);
+      // Register late so we overwrite any legacy page inline formatQuoteData injectors.
+      const bindLateSync = () => {
+        form.addEventListener('submit', () => { syncQuoteFormFields(); });
+      };
+      if (document.readyState === 'complete') bindLateSync();
+      else window.addEventListener('load', bindLateSync);
+      syncQuoteFormFields();
     }
 
     loadCart();
@@ -531,6 +600,7 @@ let systemInitialized=false;
     updateNavQty();
     refreshSparePartButtons();
     setupQuoteLeadTracking();
+    syncQuoteFormFields();
 
     window.updateRequestQuotePageEmptyState = updateRequestQuotePageEmptyState;
     window.addEventListener('load', updateRequestQuotePageEmptyState);
