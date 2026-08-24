@@ -325,7 +325,76 @@ function syncOtherOptionInLists(){
   removeCmsOtherItems();
   moveDesignerOtherToEnd();
   updateSparePartButtonsState();
+  ensureMachineQuoteToggle();
 }
+
+function machineInCart(){
+  const title=getParentProductTitle();
+  const slug=getParentProductSlug();
+  const cart=getCart();
+  return cart.some(i=>!i.isSparePart&&((slug&&i.productSlug===slug)||norm(i.title)===norm(title)));
+}
+
+function ensureMachineQuoteToggleStyles(){
+  if(document.getElementById('machine-quote-toggle-style'))return;
+  const st=document.createElement('style');
+  st.id='machine-quote-toggle-style';
+  st.textContent=[
+    '[data-machine-quote-toggle]{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 0 1rem;padding:0.85rem 1rem;border:1px solid rgba(0,0,0,0.12);border-radius:0.5rem;background:#fff;}',
+    '[data-machine-quote-toggle] .mqt-copy{display:flex;flex-direction:column;gap:0.15rem;min-width:0;}',
+    '[data-machine-quote-toggle] .mqt-label{font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;opacity:0.7;}',
+    '[data-machine-quote-toggle] .mqt-title{font-weight:600;}',
+    '[data-machine-quote-toggle] input[type="checkbox"]{width:1.15rem;height:1.15rem;accent-color:#f5a623;cursor:pointer;flex-shrink:0;}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
+function setFullMachineInQuote(include){
+  const title=getParentProductTitle()||'Product';
+  const slug=getParentProductSlug();
+  const sizeRange=getParentProductSizeRange();
+  const parentDesc=getParentProductDescription();
+  let cart=mergeDuplicateSpareParts(getCart());
+  const idx=cart.findIndex(i=>!i.isSparePart&&((slug&&i.productSlug===slug)||norm(i.title)===norm(title)));
+  if(include){
+    if(idx<0){
+      const prod={title,description:parentDesc||'',qty:1};
+      if(slug)prod.productSlug=slug;
+      if(sizeRange)prod.productSizeRange=sizeRange;
+      cart.push(prod);
+    }
+  }else if(idx>=0){
+    cart.splice(idx,1);
+  }
+  setCart(cart);
+  if(typeof window.updateNavQty==='function')window.updateNavQty();
+  ensureMachineQuoteToggle();
+  if(include)openQuoteModal();
+}
+
+function ensureMachineQuoteToggle(){
+  // Only on product pages that expose parent machine metadata + spare parts list
+  const list=document.querySelector('.list-spare_parts, [data-spare-parts-list]');
+  const title=getParentProductTitle();
+  if(!list||!title)return;
+  ensureMachineQuoteToggleStyles();
+  let host=document.querySelector('[data-machine-quote-toggle]');
+  if(!host){
+    host=document.createElement('div');
+    host.setAttribute('data-machine-quote-toggle','');
+    host.innerHTML='<div class="mqt-copy"><div class="mqt-label">Request quote for full machine</div><div class="mqt-title"></div></div><input type="checkbox" aria-label="Request quote for full machine">';
+    list.parentElement?.insertBefore(host,list);
+    const cb=host.querySelector('input[type="checkbox"]');
+    cb.addEventListener('change',()=>{
+      setFullMachineInQuote(!!cb.checked);
+    });
+  }
+  const titleEl=host.querySelector('.mqt-title');
+  if(titleEl)titleEl.textContent=title;
+  const cb=host.querySelector('input[type="checkbox"]');
+  if(cb)cb.checked=machineInCart();
+}
+window.ensureMachineQuoteToggle=ensureMachineQuoteToggle;
 
 function init(){
   document.addEventListener('click',e=>{
@@ -351,7 +420,10 @@ function init(){
     obs.observe(modal,{attributes:true,attributeFilter:['data-modal-status']});
   }
 
-  document.addEventListener('quoteCartUpdated',()=>updateSparePartButtonsState());
+  document.addEventListener('quoteCartUpdated',()=>{
+    updateSparePartButtonsState();
+    ensureMachineQuoteToggle();
+  });
   syncOtherOptionInLists();
   // CMS/Finsweet may re-render list items after first paint
   setTimeout(syncOtherOptionInLists,300);
