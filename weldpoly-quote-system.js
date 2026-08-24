@@ -339,13 +339,32 @@ let systemInitialized=false;
         const descNode=findInClone(clone,descSel)||clone.querySelector('[data-quote-description]');
         const sizeRangeNode=clone.querySelector('[data-quote-size-range]');
         const qtyEl = clone.querySelector('[data-quote-number]');
+        const partMachineNode=clone.querySelector('[data-quote-part-machine]');
+        const partCodeNode=clone.querySelector('[data-quote-part-code]');
         if (titleNode) titleNode.textContent = item.title || '';
         const descText=item.description||'';
         const sizeText=item.productSizeRange||'';
+        const parentTitle=(item.parentProductTitle||'').trim();
         const fullDesc=sizeRangeNode ? descText : (sizeText && descText ? sizeText+'\n'+descText : (sizeText||descText));
-        if (isOtherSparePart(item)) {
-          attachOtherDescriptionField(descNode, item, { focus: !!item.needsOtherDescription });
-          if (sizeRangeNode) sizeRangeNode.style.display = 'none';
+        if (isSparePart) {
+          // Always show the parent machine as the reference product on spare-part lines.
+          if (partMachineNode) {
+            partMachineNode.textContent = parentTitle;
+            partMachineNode.style.display = parentTitle ? '' : 'none';
+          }
+          if (isOtherSparePart(item)) {
+            const otherHost = partCodeNode || descNode;
+            attachOtherDescriptionField(otherHost, item, { focus: !!item.needsOtherDescription });
+            if (sizeRangeNode) sizeRangeNode.style.display = 'none';
+          } else if (partCodeNode || partMachineNode) {
+            if (partCodeNode) {
+              partCodeNode.textContent = descText;
+              partCodeNode.style.display = descText ? '' : 'none';
+            }
+          } else {
+            if (descNode) descNode.textContent = parentTitle ? (descText ? descText + '\n' + parentTitle : parentTitle) : fullDesc;
+            if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
+          }
         } else {
           if (descNode) descNode.textContent = fullDesc;
           if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
@@ -356,9 +375,9 @@ let systemInitialized=false;
           const inner = qtyEl.querySelector('div');
           if (inner) inner.textContent = q;
         }
-        if (isSparePart && !titleNode && !descNode) {
+        if (isSparePart && !titleNode && !descNode && !partMachineNode) {
           const partContent = clone.querySelector('[data-quote-part-content]') || clone.querySelector('.quote_item_content');
-          if (partContent) partContent.textContent = ((item.title || '') + ' ' + (item.description || '')).trim();
+          if (partContent) partContent.textContent = ((item.title || '') + ' ' + (item.description || '') + (parentTitle ? ' — ' + parentTitle : '')).trim();
         }
         const imgEl = clone.querySelector('[data-quote-image]');
         if (imgEl) imgEl.remove();
@@ -406,11 +425,28 @@ let systemInitialized=false;
         const qEl = clone.querySelector('[data-quote-number]') || clone.querySelector('.quote_number');
         if (tEl) tEl.textContent = item.title || '';
         const descT=item.description||'', sizeT=item.productSizeRange||'';
+        const parentTitle=(item.parentProductTitle||'').trim();
         const fullD=sEl ? descT : (sizeT && descT ? sizeT+'\n'+descT : (sizeT||descT));
-        if (isOtherSparePart(item)) {
-          const pageDesc = dEl || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
-          attachOtherDescriptionField(pageDesc, item, { focus: false });
-          if (sEl) sEl.style.display = 'none';
+        const partMachineNode=clone.querySelector('[data-quote-part-machine]');
+        const partCodeNode=clone.querySelector('[data-quote-part-code]');
+        if (item.isSparePart) {
+          if (partMachineNode) {
+            partMachineNode.textContent = parentTitle;
+            partMachineNode.style.display = parentTitle ? '' : 'none';
+          }
+          if (isOtherSparePart(item)) {
+            const pageDesc = partCodeNode || dEl || clone.querySelector('.quote_item-description');
+            attachOtherDescriptionField(pageDesc, item, { focus: false });
+            if (sEl) sEl.style.display = 'none';
+          } else if (partCodeNode || partMachineNode) {
+            if (partCodeNode) {
+              partCodeNode.textContent = descT;
+              partCodeNode.style.display = descT ? '' : 'none';
+            }
+          } else {
+            if (dEl) dEl.textContent = parentTitle ? (descT ? descT + '\n' + parentTitle : parentTitle) : fullD;
+            if (sEl) sEl.textContent = sizeT;
+          }
         } else {
           if (dEl) dEl.textContent = fullD;
           if (sEl) sEl.textContent = sizeT;
