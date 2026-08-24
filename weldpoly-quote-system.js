@@ -38,6 +38,19 @@ let systemInitialized=false;
       return !!(item && item.isSparePart && (item.isOtherSparePart === true || (item.title || '').trim().toLowerCase() === 'other'));
     }
 
+    function resolveCartItem(item) {
+      if (!item) return null;
+      const key = itemKey(item);
+      return cart.find((c) => itemKey(c) === key) || item;
+    }
+
+    function syncOtherDescriptionInputs(value, except) {
+      document.querySelectorAll('[data-quote-other-description]').forEach((el) => {
+        if (el === except) return;
+        if (el.value !== value) el.value = value;
+      });
+    }
+
     function attachOtherDescriptionField(descNode, item, opts) {
       if (!descNode) return null;
       const focus = !!(opts && opts.focus);
@@ -49,16 +62,24 @@ let systemInitialized=false;
       input.setAttribute('aria-label', 'Describe the part you need');
       input.placeholder = 'Describe the part you need (one sentence)';
       input.value = item.description || '';
+      // Persist against the live cart entry (never re-render on blur — that was orphaning
+      // item refs via loadCart in updateRequestQuotePageEmptyState and wiping the field).
       input.addEventListener('input', () => {
-        item.description = input.value;
-        if (item.description.trim()) delete item.needsOtherDescription;
+        const target = resolveCartItem(item);
+        if (!target) return;
+        target.description = input.value;
+        if (target.description.trim()) delete target.needsOtherDescription;
         saveCart({ silent: true });
+        syncOtherDescriptionInputs(target.description, input);
       });
       input.addEventListener('blur', () => {
-        item.description = (input.value || '').trim();
-        if (item.description) delete item.needsOtherDescription;
+        const target = resolveCartItem(item);
+        if (!target) return;
+        target.description = (input.value || '').trim();
+        input.value = target.description;
+        if (target.description) delete target.needsOtherDescription;
         saveCart({ silent: true });
-        renderRequestQuotePageList();
+        syncOtherDescriptionInputs(target.description, input);
       });
       descNode.replaceWith(input);
       // Hide leftover part template description lines for Other
@@ -277,26 +298,29 @@ let systemInitialized=false;
     const pageListContainer = document.querySelector('[data-quote-list]') || document.querySelector('.request-a-quote_list');
     const pageTitleEl = document.querySelector('[data-request-a-quote-title]');
     const pageTemplate = pageListContainer?.querySelector('[data-quote-placeholder]') || pageListContainer?.querySelector('[data-quote-item]') || pageListContainer?.querySelector('.quote_item') || templateItem || templatePartItem;
+    const pagePartTemplate = pageListContainer?.querySelector('[data-quote-part-item]') || null;
 
     function renderRequestQuotePageList() {
       if (!pageListContainer) return;
       const template = pageTemplate || templateItem || templatePartItem;
       if (!template) return;
       template.style.display = 'none';
+      if (pagePartTemplate) pagePartTemplate.style.display = 'none';
       pageListContainer.querySelectorAll('.quote_item, .quote_part-item').forEach(el => {
-        if (el !== template && !el.hasAttribute('data-quote-placeholder') && !el.hasAttribute('data-quote-item') && !el.hasAttribute('data-quote-part-item')) el.remove();
+        if (el !== template && el !== pagePartTemplate && !el.hasAttribute('data-quote-placeholder') && !el.hasAttribute('data-quote-item') && !el.hasAttribute('data-quote-part-item')) el.remove();
       });
       const order = buildCartOrder();
       order.forEach(({ item, idx }) => {
-        const itemTemplate = (item.isSparePart && templatePartItem) ? templatePartItem : template;
+        const partTpl = pagePartTemplate || templatePartItem;
+        const itemTemplate = (item.isSparePart && partTpl) ? partTpl : template;
         const clone = itemTemplate.cloneNode(true);
         clone.style.display = 'flex';
         clone.removeAttribute('data-quote-placeholder');
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
         if (item.isSparePart) clone.classList.add('quote_part-item');
-        const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('.quote_item-title');
-        const dEl = clone.querySelector('[data-quote-description]') || clone.querySelector('.quote_item-description');
+        const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('[data-quote-part-name]') || clone.querySelector('.quote_item-title');
+        const dEl = clone.querySelector('[data-quote-description]') || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
         const sEl = clone.querySelector('[data-quote-size-range]');
         const qEl = clone.querySelector('[data-quote-number]') || clone.querySelector('.quote_number');
         if (tEl) tEl.textContent = item.title || '';
@@ -330,7 +354,8 @@ let systemInitialized=false;
       if (!isRequestQuotePage) return;
       const pageQuoteSection = document.querySelector('.request-a-quote_content, [quote-content], .request-quote_wrapper');
       if (!pageQuoteSection) return;
-      loadCart();
+      // Use in-memory cart only — loadCart() here orphaned item refs bound to Other
+      // description inputs on /get-a-quote, so typed text never persisted.
       if (cart.length === 0) {
         document.body.classList.add('quote-request-empty');
       } else {
@@ -481,9 +506,22 @@ let systemInitialized=false;
       const hidden = document.querySelector('[data-quote-hidden]');
       const form = hidden ? hidden.closest('form') : null;
       if (!form) return;
-      form.addEventListener('submit', () => {
+      form.addEventListener('submit', (e) => {
+        // Block submit when an Other spare part has no description (last chance to capture detail).
+        const missingOther = cart.filter(isOtherSparePart).filter((i) => !(i.description || '').trim());
+        if (missingOther.length) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const input = document.querySelector('[data-quote-list] [data-quote-other-description], [data-quote-other-description]');
+          if (input) {
+            input.setAttribute('aria-invalid', 'true');
+            try { input.focus(); } catch (_) {}
+          }
+          window.alert('Please describe the “Other” spare part before submitting your quote.');
+          return;
+        }
         try { sessionStorage.setItem(QUOTE_SUBMIT_FLAG, 'true'); } catch (_) {}
-      });
+      }, true);
     }
 
     loadCart();
