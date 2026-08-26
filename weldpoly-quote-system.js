@@ -411,7 +411,7 @@ let systemInitialized=false;
         '.quote_item-chevron{cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;transform-origin:center;}',
         '.quote_group[data-accordion-open="false"] .quote_item-chevron,.quote_item-wrapper[data-accordion-open="false"] .quote_item-chevron{transform:rotate(-90deg);}',
         '.quote_group[data-accordion-open="false"] .quote_part-item,.quote_item-wrapper[data-accordion-open="false"] .quote_part-item{display:none!important;}',
-        '.quote_item-chevron.is-disabled{visibility:hidden;pointer-events:none;}',
+        '.quote_item-chevron.is-disabled{display:none!important;pointer-events:none;visibility:hidden;}',
         /* Keep quote sheet in the viewport; only the item list scrolls (CSS flex, not JS max-height). */
         '[data-modal-name="quote-modal"].modal__card{',
         'max-height:100dvh!important;height:100%!important;min-height:0!important;overflow:hidden!important;',
@@ -443,17 +443,31 @@ let systemInitialized=false;
       if (chevron) chevron.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
 
-    function bindMachineAccordion(wrapper, machineEl, groupKey, hasParts) {
-      const chevron = machineEl.querySelector('.quote_item-chevron');
-      if (!chevron) return;
-      if (!hasParts) {
+    /** Chevron only for machines that have spare parts underneath. */
+    function setChevronEnabled(root, enabled) {
+      const chevron = root?.querySelector?.('.quote_item-chevron');
+      if (!chevron) return null;
+      if (enabled) {
+        chevron.classList.remove('is-disabled');
+        chevron.removeAttribute('aria-hidden');
+        chevron.style.removeProperty('display');
+      } else {
         chevron.classList.add('is-disabled');
+        chevron.setAttribute('aria-hidden', 'true');
         chevron.removeAttribute('role');
         chevron.removeAttribute('tabindex');
+        chevron.removeAttribute('aria-expanded');
+      }
+      return chevron;
+    }
+
+    function bindMachineAccordion(wrapper, machineEl, groupKey, hasParts) {
+      const chevron = setChevronEnabled(machineEl, !!hasParts);
+      if (!chevron) return;
+      if (!hasParts) {
         setAccordionOpen(wrapper, chevron, true);
         return;
       }
-      chevron.classList.remove('is-disabled');
       chevron.setAttribute('role', 'button');
       chevron.setAttribute('tabindex', '0');
       chevron.setAttribute('aria-label', 'Show or hide spare parts');
@@ -833,9 +847,15 @@ let systemInitialized=false;
             normT(sp.parentProductTitle) === normT(item.title)
           ));
           fillMachineRow(clone, item, entry.selected !== false, hasParts);
+          // Flat page list has no accordion nesting — hide chevron unless spare parts exist
+          // for this machine (parity with modal: never show on machine-only rows).
+          setChevronEnabled(clone, hasParts);
           pageListContainer.appendChild(clone);
           return;
         }
+
+        // Spare-part / Other rows never have nested children — never show chevron.
+        setChevronEnabled(clone, false);
 
         const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('[data-quote-part-name]') || clone.querySelector('.quote_item-title');
         const dEl = clone.querySelector('[data-quote-description]') || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
