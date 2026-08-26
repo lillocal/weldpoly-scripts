@@ -16,11 +16,16 @@ let systemInitialized=false;
     if (systemInitialized) return;
     systemInitialized = true;
 
-    // Style for Other spare-part description field in quote cart
+    // Style for Other spare-part description field + hide Designer templates
     if (!document.getElementById('quote-other-desc-style')) {
       const st = document.createElement('style');
       st.id = 'quote-other-desc-style';
-      st.textContent = '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}';
+      st.textContent = [
+        '[data-quote-other]{display:none!important;}',
+        '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}',
+        '[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}',
+        '.quote_item-input-other{width:100%;}'
+      ].join('');
       document.head.appendChild(st);
     }
 
@@ -29,6 +34,7 @@ let systemInitialized=false;
     const quoteContent = quoteModal?.querySelector('.quote_modal-content');
     const templateItem = quoteModal?.querySelector('[data-quote-item]');
     const templatePartItem = quoteModal?.querySelector('[data-quote-part-item]');
+    const templateOtherItem = quoteModal?.querySelector('[data-quote-other]');
     const titleEl = quoteModal?.querySelector('.quote_header-title');
     const emptyState = quoteModal?.querySelector('[quote-empty]') || quoteModal?.querySelector('.quote_empty-wrapper');
     const actionsBlock = quoteModal?.querySelector('.quote_modal-content-bottom');
@@ -51,13 +57,21 @@ let systemInitialized=false;
       });
     }
 
-    function attachOtherDescriptionField(descNode, item, opts) {
-      if (!descNode) return null;
+    function isOtherInputSlot(node) {
+      return !!(node && (
+        node.classList?.contains('quote_item-input-other') ||
+        node.hasAttribute?.('data-quote-other-input') ||
+        node.hasAttribute?.('data-quote-other-description')
+      ));
+    }
+
+    function attachOtherDescriptionField(host, item, opts) {
+      if (!host) return null;
       const focus = !!(opts && opts.focus);
       const input = document.createElement('input');
       input.type = 'text';
       input.maxLength = 200;
-      input.className = ((descNode.className || '') + ' quote_other-description').trim();
+      input.className = 'quote_other-description';
       input.setAttribute('data-quote-other-description', '');
       input.setAttribute('aria-label', 'Describe the part you need');
       input.placeholder = 'Describe the part you need (one sentence)';
@@ -81,8 +95,13 @@ let systemInitialized=false;
         saveCart({ silent: true });
         syncOtherDescriptionInputs(target.description, input);
       });
-      descNode.replaceWith(input);
-      // Hide leftover part template description lines for Other
+      if (isOtherInputSlot(host)) {
+        host.innerHTML = '';
+        host.appendChild(input);
+      } else {
+        host.replaceWith(input);
+      }
+      // Hide leftover part template description lines for Other (keep title)
       const content = input.closest('.quote_item_content');
       if (content) {
         content.querySelectorAll('p, [data-quote-part-code], [data-quote-part-machine], .quote_item-description, .spare-part-code').forEach((el) => {
@@ -316,8 +335,13 @@ let systemInitialized=false;
       if (!quoteContent || !templateItem) return;
       templateItem.style.display = 'none';
       if (templatePartItem) templatePartItem.style.display = 'none';
+      if (templateOtherItem) templateOtherItem.style.display = 'none';
       quoteContent.querySelectorAll('.quote_item, .quote_part-item').forEach(el => {
-        if (!el.hasAttribute('data-quote-item') && !el.hasAttribute('data-quote-part-item')) el.remove();
+        if (
+          !el.hasAttribute('data-quote-item') &&
+          !el.hasAttribute('data-quote-part-item') &&
+          !el.hasAttribute('data-quote-other')
+        ) el.remove();
       });
       const templatePart = templatePartItem || templateItem;
       const order = buildCartOrder();
@@ -327,11 +351,13 @@ let systemInitialized=false;
       const ins=emptyState||null;
       order.forEach(({item,idx})=>{
         const isSparePart = item.isSparePart === true;
-        const template = isSparePart ? templatePart : templateItem;
+        const isOther = isOtherSparePart(item);
+        const template = (isOther && templateOtherItem) ? templateOtherItem : (isSparePart ? templatePart : templateItem);
         const clone = template.cloneNode(true);
         clone.style.display = 'flex';
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
+        clone.removeAttribute('data-quote-other');
         if (isSparePart) clone.classList.add('quote_part-item');
         if (isSparePart) ensureQtyControls(clone);
 
@@ -352,8 +378,12 @@ let systemInitialized=false;
             partMachineNode.textContent = parentTitle;
             partMachineNode.style.display = parentTitle ? '' : 'none';
           }
-          if (isOtherSparePart(item)) {
-            const otherHost = partCodeNode || descNode;
+          if (isOther) {
+            const otherHost =
+              clone.querySelector('.quote_item-input-other') ||
+              clone.querySelector('[data-quote-other-input]') ||
+              partCodeNode ||
+              descNode;
             attachOtherDescriptionField(otherHost, item, { focus: !!item.needsOtherDescription });
             if (sizeRangeNode) sizeRangeNode.style.display = 'none';
           } else if (partCodeNode || partMachineNode) {
@@ -398,6 +428,7 @@ let systemInitialized=false;
     const pageTitleEl = document.querySelector('[data-request-a-quote-title]');
     const pageTemplate = pageListContainer?.querySelector('[data-quote-placeholder]') || pageListContainer?.querySelector('[data-quote-item]') || pageListContainer?.querySelector('.quote_item') || templateItem || templatePartItem;
     const pagePartTemplate = pageListContainer?.querySelector('[data-quote-part-item]') || null;
+    const pageOtherTemplate = pageListContainer?.querySelector('[data-quote-other]') || null;
 
     function renderRequestQuotePageList() {
       if (!pageListContainer) return;
@@ -405,18 +436,32 @@ let systemInitialized=false;
       if (!template) return;
       template.style.display = 'none';
       if (pagePartTemplate) pagePartTemplate.style.display = 'none';
+      if (pageOtherTemplate) pageOtherTemplate.style.display = 'none';
       pageListContainer.querySelectorAll('.quote_item, .quote_part-item').forEach(el => {
-        if (el !== template && el !== pagePartTemplate && !el.hasAttribute('data-quote-placeholder') && !el.hasAttribute('data-quote-item') && !el.hasAttribute('data-quote-part-item')) el.remove();
+        if (
+          el !== template &&
+          el !== pagePartTemplate &&
+          el !== pageOtherTemplate &&
+          !el.hasAttribute('data-quote-placeholder') &&
+          !el.hasAttribute('data-quote-item') &&
+          !el.hasAttribute('data-quote-part-item') &&
+          !el.hasAttribute('data-quote-other')
+        ) el.remove();
       });
       const order = buildCartOrder();
       order.forEach(({ item, idx }) => {
+        const isOther = isOtherSparePart(item);
+        const otherTpl = pageOtherTemplate || templateOtherItem;
         const partTpl = pagePartTemplate || templatePartItem;
-        const itemTemplate = (item.isSparePart && partTpl) ? partTpl : template;
+        const itemTemplate = (isOther && otherTpl)
+          ? otherTpl
+          : ((item.isSparePart && partTpl) ? partTpl : template);
         const clone = itemTemplate.cloneNode(true);
         clone.style.display = 'flex';
         clone.removeAttribute('data-quote-placeholder');
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
+        clone.removeAttribute('data-quote-other');
         if (item.isSparePart) clone.classList.add('quote_part-item');
         if (item.isSparePart) ensureQtyControls(clone);
         const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('[data-quote-part-name]') || clone.querySelector('.quote_item-title');
@@ -434,8 +479,13 @@ let systemInitialized=false;
             partMachineNode.textContent = parentTitle;
             partMachineNode.style.display = parentTitle ? '' : 'none';
           }
-          if (isOtherSparePart(item)) {
-            const pageDesc = partCodeNode || dEl || clone.querySelector('.quote_item-description');
+          if (isOther) {
+            const pageDesc =
+              clone.querySelector('.quote_item-input-other') ||
+              clone.querySelector('[data-quote-other-input]') ||
+              partCodeNode ||
+              dEl ||
+              clone.querySelector('.quote_item-description');
             attachOtherDescriptionField(pageDesc, item, { focus: false });
             if (sEl) sEl.style.display = 'none';
           } else if (partCodeNode || partMachineNode) {
