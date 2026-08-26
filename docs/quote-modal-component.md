@@ -13,8 +13,9 @@ Designer component rendered in the quote drawer for **full machines**. Spare par
 | Include machine | checkbox state | `.quote_item-select` (styled empty div; JS toggles `aria-checked` / `is-checked`) |
 | Accordion | open/close spare parts under this machine | `.quote_item-chevron` |
 | Remove (machine-only) | remove machine from cart | `[data-quote-remove]` (injected when there are **no** spare parts under the row) |
+| Group wrapper | machine + its spare parts (separator) | `.quote_group` (`data-quote-group`) — Designer border-bottom |
 
-Spare parts for that machine render **below** the row (qty + remove). Chevron collapses/expands them.
+Spare parts for that machine render **below** the row inside `.quote_group` (qty + remove). Chevron collapses/expands them.
 
 ### Checkbox vs Remove (UX)
 
