@@ -24,8 +24,7 @@ let systemInitialized=false;
         '[data-quote-other]{display:none!important;}',
         '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}',
         '[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}',
-        '.quote_item-input-other{width:100%;}',
-        '.quote_item-select input[type="checkbox"]{width:1.15rem;height:1.15rem;accent-color:#f5a623;cursor:pointer;}'
+        '.quote_item-input-other{width:100%;}'
       ].join('');
       document.head.appendChild(st);
     }
@@ -360,16 +359,36 @@ let systemInitialized=false;
       refreshSparePartButtons();
     }
 
+    function syncWebflowCheckboxVisual(cb, checked) {
+      if (!cb) return;
+      cb.checked = !!checked;
+      const wrap = cb.closest('.w-checkbox');
+      const custom = (wrap && wrap.querySelector('.w-checkbox-input')) ||
+        (cb.previousElementSibling && cb.previousElementSibling.classList?.contains('w-checkbox-input')
+          ? cb.previousElementSibling
+          : null);
+      if (custom) custom.classList.toggle('w--redirected-checked', !!checked);
+    }
+
     function bindMachineSelect(clone, meta, selected) {
-      const host = clone.querySelector('.quote_item-select');
+      const host = clone.querySelector('[data-quote-machine-select]') || clone.querySelector('.quote_item-select');
       if (!host) return;
-      host.innerHTML = '';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = !!selected;
+      // Prefer the Designer checkbox — never wipe/replace it (that caused double boxes).
+      let cb = host.querySelector('input[type="checkbox"]') ||
+        clone.querySelector('[data-quote-machine-checkbox]');
+      if (!cb) {
+        cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-quote-machine-checkbox', '');
+        cb.setAttribute('aria-label', 'Request quote for full machine');
+        host.appendChild(cb);
+      }
+      syncWebflowCheckboxVisual(cb, selected);
       cb.setAttribute('aria-label', 'Request quote for full machine');
-      cb.addEventListener('change', () => setMachineInQuote(meta, !!cb.checked));
-      host.appendChild(cb);
+      cb.addEventListener('change', () => {
+        syncWebflowCheckboxVisual(cb, cb.checked);
+        setMachineInQuote(meta, !!cb.checked);
+      });
     }
 
     function fillMachineRow(clone, item, selected) {
