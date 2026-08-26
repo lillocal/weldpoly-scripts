@@ -63,6 +63,11 @@ Also store when possible:
 | `data-quote-remove` | Remove part |
 | `data-quote-number` | Qty display |
 
+### Other description field
+
+`.quote_item-input-other` is the **styled shell** (border/background/height in Designer).  
+JS injects a borderless `<input data-quote-other-description>` inside it — do not nest a second Form Input in Designer.
+
 ## Scripts
 
 - `weldpoly-quote-system.js` — cart, modal render, machine row, accordion, images  

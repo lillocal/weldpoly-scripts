@@ -22,9 +22,17 @@ let systemInitialized=false;
       st.id = 'quote-other-desc-style';
       st.textContent = [
         '[data-quote-other]{display:none!important;}',
-        '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}',
-        '[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}',
-        '.quote_item-input-other{width:100%;}'
+        // Designer shell (.quote_item-input-other) already has border/bg/height — fill it with a chrome-less input.
+        '.quote_item-input-other{display:flex;align-items:center;width:100%;box-sizing:border-box;padding:0 .75rem;overflow:hidden;}',
+        '.quote_item-input-other > [data-quote-other-description],.quote_item-input-other > input{',
+        'display:block;width:100%;height:100%;min-height:0;margin:0;padding:0;',
+        'border:0!important;border-radius:0!important;outline:none!important;box-shadow:none!important;',
+        'background:transparent!important;font:inherit;line-height:1.35;color:inherit;box-sizing:border-box;',
+        '}',
+        '.quote_item-input-other:focus-within{outline:2px solid rgba(0,0,0,0.28);outline-offset:1px;}',
+        // Fallback when no Designer shell exists (e.g. legacy part template)
+        '[data-quote-other-description]:not(.quote_item-input-other > *){display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}',
+        '[data-quote-other-description]:not(.quote_item-input-other > *):focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}'
       ].join('');
       document.head.appendChild(st);
     }
