@@ -50,6 +50,21 @@
     return lenisInstance;
   }
 
+  function allowsNestedScroll(target, root) {
+    let el = target && target.nodeType === 1 ? target : target && target.parentElement;
+    while (el && el !== root) {
+      if (el.hasAttribute && (
+        el.hasAttribute('data-lenis-prevent') ||
+        el.hasAttribute('data-lenis-prevent-wheel') ||
+        el.getAttribute('data-lenis-scroll') === 'enabled'
+      )) {
+        return true;
+      }
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   /**
    * Disable scroll for a specific element
    */
@@ -58,30 +73,21 @@
     
     disabledSections.add(element);
     
-    // Create scroll prevention handlers
-    const wheelHandler = function(e) {
-      // Check if scroll event originated from this element or its children
-      if (element.contains(e.target)) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    };
-    
-    const touchHandler = function(e) {
-      if (element.contains(e.target)) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
+    // Allow nested scroll regions (quote modal list, etc.) — do not preventDefault there.
+    const blockUnlessNested = function(e) {
+      if (!element.contains(e.target)) return;
+      if (allowsNestedScroll(e.target, element)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
     };
     
     // Store handlers for later removal
-    scrollHandlers.set(element, { wheel: wheelHandler, touch: touchHandler });
+    scrollHandlers.set(element, { wheel: blockUnlessNested, touch: blockUnlessNested });
     
     // Add event listeners with capture phase to catch events early
-    element.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-    element.addEventListener('touchmove', touchHandler, { passive: false, capture: true });
+    element.addEventListener('wheel', blockUnlessNested, { passive: false, capture: true });
+    element.addEventListener('touchmove', blockUnlessNested, { passive: false, capture: true });
     
     // Also prevent scroll on the element itself
     element.style.overflow = 'hidden';
