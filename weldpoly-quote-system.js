@@ -360,6 +360,8 @@ let systemInitialized=false;
     }
 
     // Designer styles .quote_item-select as the checkbox (SVG background), not a native input.
+    // Chevron expands/collapses spare parts under each machine group.
+    const accordionOpenByKey = Object.create(null);
     if (!document.getElementById('quote-machine-select-style')) {
       const st = document.createElement('style');
       st.id = 'quote-machine-select-style';
@@ -369,10 +371,68 @@ let systemInitialized=false;
         'background-image:url(https://cdn.prod.website-files.com/6952d1b8123017b1e0a6472c/6a8e367b2495159db784efd4_check_box.svg)!important;',
         'background-position:50%;background-repeat:no-repeat;background-size:contain;',
         '}',
-        // Hide any leftover JS-injected native checkboxes from older script versions
-        '.quote_item-select > input[type="checkbox"][data-quote-machine-checkbox]{display:none!important;}'
+        '.quote_item-select > input[type="checkbox"][data-quote-machine-checkbox]{display:none!important;}',
+        '.quote_item-wrapper[data-quote-group]{display:flex;flex-direction:column;width:100%;}',
+        '.quote_item-chevron{cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;transform-origin:center;}',
+        '.quote_item-wrapper[data-accordion-open="false"] .quote_item-chevron{transform:rotate(-90deg);}',
+        '.quote_item-wrapper[data-accordion-open="false"] .quote_part-item{display:none!important;}',
+        '.quote_item-chevron.is-disabled{visibility:hidden;pointer-events:none;}'
       ].join('');
       document.head.appendChild(st);
+    }
+
+    function setAccordionOpen(wrapper, chevron, open) {
+      if (!wrapper) return;
+      wrapper.setAttribute('data-accordion-open', open ? 'true' : 'false');
+      if (chevron) chevron.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function bindMachineAccordion(wrapper, machineEl, groupKey, hasParts) {
+      const chevron = machineEl.querySelector('.quote_item-chevron');
+      if (!chevron) return;
+      if (!hasParts) {
+        chevron.classList.add('is-disabled');
+        chevron.removeAttribute('role');
+        chevron.removeAttribute('tabindex');
+        setAccordionOpen(wrapper, chevron, true);
+        return;
+      }
+      chevron.classList.remove('is-disabled');
+      chevron.setAttribute('role', 'button');
+      chevron.setAttribute('tabindex', '0');
+      chevron.setAttribute('aria-label', 'Show or hide spare parts');
+      const open = accordionOpenByKey[groupKey] !== false;
+      setAccordionOpen(wrapper, chevron, open);
+      const toggle = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = wrapper.getAttribute('data-accordion-open') !== 'true';
+        accordionOpenByKey[groupKey] = next;
+        setAccordionOpen(wrapper, chevron, next);
+      };
+      chevron.addEventListener('click', toggle);
+      chevron.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        toggle(e);
+      });
+    }
+
+    function groupCartOrder(order) {
+      const groups = [];
+      let current = null;
+      order.forEach((entry) => {
+        if (!entry.item.isSparePart) {
+          current = { machine: entry, parts: [] };
+          groups.push(current);
+          return;
+        }
+        if (!current) {
+          current = { machine: null, parts: [] };
+          groups.push(current);
+        }
+        current.parts.push(entry);
+      });
+      return groups;
     }
 
     function syncWebflowCheckboxVisual(cb, checked) {
@@ -508,6 +568,7 @@ let systemInitialized=false;
       templateItem.style.display = 'none';
       if (templatePartItem) templatePartItem.style.display = 'none';
       if (templateOtherItem) templateOtherItem.style.display = 'none';
+      quoteContent.querySelectorAll('[data-quote-group]').forEach((el) => el.remove());
       quoteContent.querySelectorAll('.quote_item, .quote_part-item').forEach(el => {
         if (
           !el.hasAttribute('data-quote-item') &&
@@ -517,29 +578,26 @@ let systemInitialized=false;
       });
       const templatePart = templatePartItem || templateItem;
       const order = buildCartOrder();
+      const groups = groupCartOrder(order);
       const titleSel=['[data-quote-title]','[data-quote-part-name]','.quote_part-item-title','.quote_part-item_title','.quote_item-title','.quote_part-title','.quote_item_content p:first-child','.quote_item_content > *:first-child'];
       const descSel=['[data-quote-description]','[data-quote-part-machine]','[data-quote-part-code]','.quote_part-item-description','.quote_part-item_description','.quote_item-description','.quote_part-description','.quote_item_content p:nth-of-type(2)','.quote_item_content p:last-of-type','.quote_item_content > *:nth-child(2)','.quote_item_content > *:last-child'];
 
       const ins=emptyState||null;
-      order.forEach((entry)=>{
-        const item = entry.item;
-        const isSparePart = item.isSparePart === true;
+
+      function appendRendered(node) {
+        ins ? quoteContent.insertBefore(node, ins) : quoteContent.appendChild(node);
+      }
+
+      function buildPartRow(item) {
         const isOther = isOtherSparePart(item);
-        const isMachine = !isSparePart;
-        const template = (isOther && templateOtherItem) ? templateOtherItem : (isSparePart ? templatePart : templateItem);
+        const template = (isOther && templateOtherItem) ? templateOtherItem : templatePart;
         const clone = template.cloneNode(true);
         clone.style.display = 'flex';
         clone.removeAttribute('data-quote-item');
         clone.removeAttribute('data-quote-part-item');
         clone.removeAttribute('data-quote-other');
-        if (isSparePart) clone.classList.add('quote_part-item');
-        if (isSparePart) ensureQtyControls(clone);
-
-        if (isMachine) {
-          fillMachineRow(clone, item, entry.selected !== false);
-          ins?quoteContent.insertBefore(clone,ins):quoteContent.appendChild(clone);
-          return;
-        }
+        clone.classList.add('quote_part-item');
+        ensureQtyControls(clone);
 
         const titleNode=findInClone(clone,titleSel)||clone.querySelector('[data-quote-title]');
         const descNode=findInClone(clone,descSel)||clone.querySelector('[data-quote-description]');
@@ -552,7 +610,6 @@ let systemInitialized=false;
         const sizeText=item.productSizeRange||'';
         const parentTitle=(item.parentProductTitle||'').trim();
         const fullDesc=sizeRangeNode ? descText : (sizeText && descText ? sizeText+'\n'+descText : (sizeText||descText));
-        // Parent machine is shown via the data-quote-item header above the parts.
         if (partMachineNode) {
           partMachineNode.textContent = parentTitle;
           partMachineNode.style.display = parentTitle ? '' : 'none';
@@ -593,7 +650,34 @@ let systemInitialized=false;
         if (plusBtn) plusBtn.addEventListener('click', () => bumpQty(item, 1));
         if (minusBtn) minusBtn.addEventListener('click', () => bumpQty(item, -1));
         if (removeBtn) removeBtn.addEventListener('click', (e) => { e.preventDefault(); removeFromCart(item); });
-        ins?quoteContent.insertBefore(clone,ins):quoteContent.appendChild(clone);
+        return clone;
+      }
+
+      groups.forEach((group) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'quote_item-wrapper';
+        const groupKey = group.machine
+          ? (parentKeyFromMachine(group.machine.item) || ('m_' + groups.indexOf(group)))
+          : ('orphan_' + groups.indexOf(group));
+        wrapper.setAttribute('data-quote-group', groupKey);
+
+        if (group.machine) {
+          const item = group.machine.item;
+          const clone = templateItem.cloneNode(true);
+          clone.style.display = 'flex';
+          clone.removeAttribute('data-quote-item');
+          clone.removeAttribute('data-quote-part-item');
+          clone.removeAttribute('data-quote-other');
+          fillMachineRow(clone, item, group.machine.selected !== false);
+          wrapper.appendChild(clone);
+          bindMachineAccordion(wrapper, clone, groupKey, group.parts.length > 0);
+        }
+
+        group.parts.forEach((entry) => {
+          wrapper.appendChild(buildPartRow(entry.item));
+        });
+
+        appendRendered(wrapper);
       });
       updateTitle();
       toggleEmptyState();
