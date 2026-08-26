@@ -159,6 +159,31 @@ function findAddHost(container){
     null;
 }
 
+function ensureParentMachineInCart(cart){
+  const parentTitle=getParentProductTitle();
+  const parentSlug=getParentProductSlug();
+  if(!parentTitle&&!parentSlug)return cart;
+  const hasParent=cart.some(i=>!i.isSparePart&&((parentSlug&&i.productSlug===parentSlug)||norm(i.title)===norm(parentTitle)));
+  const sizeRange=getParentProductSizeRange();
+  const parentImage=getParentProductImage();
+  const parentDesc=getParentProductDescription();
+  if(!hasParent){
+    const machine={title:parentTitle||'Product',description:parentDesc||'',qty:1,isSparePart:false};
+    if(parentSlug)machine.productSlug=parentSlug;
+    if(sizeRange)machine.productSizeRange=sizeRange;
+    if(parentImage)machine.productImage=parentImage;
+    cart.push(machine);
+  }else{
+    const ex=cart.find(i=>!i.isSparePart&&((parentSlug&&i.productSlug===parentSlug)||norm(i.title)===norm(parentTitle)));
+    if(ex){
+      if(sizeRange&&!ex.productSizeRange)ex.productSizeRange=sizeRange;
+      if(parentImage&&!ex.productImage)ex.productImage=parentImage;
+      if(parentDesc&&!ex.description)ex.description=parentDesc;
+    }
+  }
+  return cart;
+}
+
 function setSparePartQty(container,nextQty){
   const title=getSparePartTitle(container);
   const description=getSparePartDescription(container);
@@ -173,6 +198,7 @@ function setSparePartQty(container,nextQty){
   }else if(idx>=0){
     cart[idx].qty=qty;
   }else{
+    ensureParentMachineInCart(cart);
     const other=isOtherSparePart(title)||isDesignerOtherNode(container)||container.hasAttribute('data-quote-other-option');
     const sp={title:other?'Other':title,description:other?'':description,qty,isSparePart:true,parentProductTitle:parentTitle||''};
     if(parentSlug)sp.parentProductSlug=parentSlug;
@@ -264,21 +290,16 @@ function toggleSparePartInQuote(trigger){
   const parentSlug=getParentProductSlug();
   const cart=getCart();
   const merged=mergeDuplicateSpareParts(cart);
-  // Do NOT auto-add the parent machine. Spare parts and machines are independent quote lines.
-  // If the machine is already in the cart, optionally backfill size range metadata only.
+  // Include parent machine by default so quote-data has machine + spare parts together.
+  // User can uncheck "Request quote for full machine" in the drawer to drop it.
+  ensureParentMachineInCart(merged);
   const sizeRange=getParentProductSizeRange();
-  const hasParent=(parentTitle&&merged.some(i=>!i.isSparePart&&norm(i.title)===norm(parentTitle)))||(parentSlug&&merged.some(i=>!i.isSparePart&&i.productSlug===parentSlug));
-  if(hasParent&&sizeRange){
-    const ex=merged.find(i=>!i.isSparePart&&(norm(i.title)===norm(parentTitle)||(parentSlug&&i.productSlug===parentSlug)));
-    if(ex&&!ex.productSizeRange)ex.productSizeRange=sizeRange;
-  }
+  const parentImage=getParentProductImage();
+  const parentDesc=getParentProductDescription();
   const other=isOtherSparePart(title)||isDesignerOtherNode(container)||container.hasAttribute('data-quote-other-option');
   const sp={title:other?'Other':title,description:other?'':description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
   if(parentSlug)sp.parentProductSlug=parentSlug;
-  const parentSize=getParentProductSizeRange();
-  const parentImage=getParentProductImage();
-  const parentDesc=getParentProductDescription();
-  if(parentSize)sp.parentProductSizeRange=parentSize;
+  if(sizeRange)sp.parentProductSizeRange=sizeRange;
   if(parentImage)sp.parentProductImage=parentImage;
   if(parentDesc)sp.parentProductDescription=parentDesc;
   if(other){
