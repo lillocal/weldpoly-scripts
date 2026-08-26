@@ -430,7 +430,9 @@ let systemInitialized=false;
         '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
         '}',
         /* Was flex:1 in Designer — that stole height from the list and broke scrolling. */
-        '[data-modal-name="quote-modal"] .quote_modal-content-bottom{flex:0 0 auto!important;}'
+        '[data-modal-name="quote-modal"] .quote_modal-content-bottom{flex:0 0 auto!important;}',
+        /* Lock page scroll while quote modal is open (Lenis stopped separately in JS). */
+        'html.quote-modal-open,html.quote-modal-open body{overflow:hidden!important;}'
       ].join('');
       document.head.appendChild(st);
     }
@@ -908,26 +910,42 @@ let systemInitialized=false;
       quoteContent.setAttribute('data-locomotive-scroll', 'ignore');
       quoteContent.setAttribute('data-scroll', 'ignore');
       quoteContent.setAttribute('data-lenis-prevent', '');
+      quoteContent.setAttribute('data-lenis-prevent-wheel', '');
       quoteContent.classList.add('quote-modal-scrollable');
     }
 
+    function getLenisInstance() {
+      if (window.locomotiveScroll && window.locomotiveScroll.lenis) return window.locomotiveScroll.lenis;
+      if (window.scroll && window.scroll.lenis) return window.scroll.lenis;
+      if (window.lenis) return window.lenis;
+      return null;
+    }
+
     function handleModalScrollControl(modalOpen) {
-      if (typeof window.disableLenisScroll !== 'function' || typeof window.enableLenisScroll !== 'function') {
-        setTimeout(() => handleModalScrollControl(modalOpen), 100);
-        return;
-      }
-      const body = document.body;
       const html = document.documentElement;
+      const lenis = getLenisInstance();
+      if (quoteContent) {
+        quoteContent.removeAttribute('data-lenis-scroll');
+        quoteContent.setAttribute('data-lenis-prevent', '');
+        quoteContent.setAttribute('data-lenis-prevent-wheel', '');
+      }
       if (modalOpen) {
-        window.disableLenisScroll(body);
-        window.disableLenisScroll(html);
-        if (quoteContent) {
-          quoteContent.removeAttribute('data-lenis-scroll');
-          quoteContent.setAttribute('data-lenis-prevent', '');
+        html.classList.add('quote-modal-open');
+        // Prefer Lenis stop() + CSS overflow lock. Do NOT disableLenisScroll(body/html):
+        // that capture-phase preventDefault blocked mouse-wheel on the nested quote list
+        // (scrollbar drag still worked because it does not use wheel events).
+        if (lenis && typeof lenis.stop === 'function') lenis.stop();
+        else if (typeof window.disableLenisScroll === 'function') {
+          window.disableLenisScroll(document.body);
+          window.disableLenisScroll(html);
         }
       } else {
-        window.enableLenisScroll(body);
-        window.enableLenisScroll(html);
+        html.classList.remove('quote-modal-open');
+        if (lenis && typeof lenis.start === 'function') lenis.start();
+        else if (typeof window.enableLenisScroll === 'function') {
+          window.enableLenisScroll(document.body);
+          window.enableLenisScroll(html);
+        }
       }
     }
 

@@ -47,14 +47,36 @@
       return lenisInstance;
     }
 
+    function allowsNestedScroll(target, root) {
+      let el = target && target.nodeType === 1 ? target : target && target.parentElement;
+      while (el && el !== root) {
+        if (el.hasAttribute && (
+          el.hasAttribute('data-lenis-prevent') ||
+          el.hasAttribute('data-lenis-prevent-wheel') ||
+          el.getAttribute('data-lenis-scroll') === 'enabled'
+        )) {
+          return true;
+        }
+        el = el.parentElement;
+      }
+      return false;
+    }
+
     function disableScrollForElement(element) {
       if (!element || disabledSections.has(element)) return;
       disabledSections.add(element);
-      const wheelHandler = (e) => { if (element.contains(e.target)) { e.preventDefault(); e.stopPropagation(); return false; } };
-      const touchHandler = (e) => { if (element.contains(e.target)) { e.preventDefault(); e.stopPropagation(); return false; } };
-      scrollHandlers.set(element, { wheel: wheelHandler, touch: touchHandler });
-      element.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-      element.addEventListener('touchmove', touchHandler, { passive: false, capture: true });
+      // Do not block wheel/touch inside nested scroll regions (e.g. quote modal list).
+      // Calling preventDefault on body/html was killing native overflow scroll there.
+      const blockUnlessNested = (e) => {
+        if (!element.contains(e.target)) return;
+        if (allowsNestedScroll(e.target, element)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      };
+      scrollHandlers.set(element, { wheel: blockUnlessNested, touch: blockUnlessNested });
+      element.addEventListener('wheel', blockUnlessNested, { passive: false, capture: true });
+      element.addEventListener('touchmove', blockUnlessNested, { passive: false, capture: true });
       element.style.overflow = 'hidden';
       element.style.overscrollBehavior = 'none';
     }
