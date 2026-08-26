@@ -411,7 +411,26 @@ let systemInitialized=false;
         '.quote_item-chevron{cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;transform-origin:center;}',
         '.quote_group[data-accordion-open="false"] .quote_item-chevron,.quote_item-wrapper[data-accordion-open="false"] .quote_item-chevron{transform:rotate(-90deg);}',
         '.quote_group[data-accordion-open="false"] .quote_part-item,.quote_item-wrapper[data-accordion-open="false"] .quote_part-item{display:none!important;}',
-        '.quote_item-chevron.is-disabled{visibility:hidden;pointer-events:none;}'
+        '.quote_item-chevron.is-disabled{visibility:hidden;pointer-events:none;}',
+        /* Keep quote sheet in the viewport; only the item list scrolls (CSS flex, not JS max-height). */
+        '[data-modal-name="quote-modal"].modal__card{',
+        'max-height:100dvh!important;height:100%!important;min-height:0!important;overflow:hidden!important;',
+        'display:flex!important;flex-direction:column!important;',
+        '}',
+        '[data-modal-name="quote-modal"] .quote-modal_component,',
+        '[data-modal-name="quote-modal"] .quote_content-wrapper{',
+        'flex:1 1 auto;min-height:0!important;max-height:100%;height:auto!important;',
+        'overflow:hidden;display:flex;flex-direction:column;',
+        '}',
+        '[data-modal-name="quote-modal"] .quote_modal-header{flex:0 0 auto;}',
+        '[data-modal-name="quote-modal"] .quote_modal-content,',
+        '[data-modal-name="quote-modal"] .quote_modal-content.quote-modal-scrollable{',
+        'flex:1 1 auto!important;min-height:0!important;height:auto!important;max-height:none!important;',
+        'overflow-y:auto!important;overflow-x:hidden!important;',
+        '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
+        '}',
+        /* Was flex:1 in Designer — that stole height from the list and broke scrolling. */
+        '[data-modal-name="quote-modal"] .quote_modal-content-bottom{flex:0 0 auto!important;}'
       ].join('');
       document.head.appendChild(st);
     }
@@ -879,17 +898,16 @@ let systemInitialized=false;
 
     function setupModalScroll() {
       if (!quoteContent) return;
-      quoteContent.style.overflowY = 'auto';
-      quoteContent.style.overflowX = 'hidden';
-      quoteContent.style.minHeight='0';
-      const modalCard = quoteModal?.querySelector('.modal__card') || quoteModal;
-      if (modalCard) {
-        const headerHeight = quoteModal?.querySelector('.quote_header')?.offsetHeight || 0;
-        const actionsHeight = quoteModal?.querySelector('.quote_modal-content-bottom')?.offsetHeight || 0;
-        quoteContent.style.maxHeight = (window.innerHeight - headerHeight - actionsHeight - 40) + 'px';
-      }
+      // Layout/scroll is handled by CSS flex (see quote-machine-select-style).
+      // Clear legacy inline max-height that fought the flex chain and clipped the list.
+      quoteContent.style.removeProperty('max-height');
+      quoteContent.style.removeProperty('min-height');
+      quoteContent.style.removeProperty('overflow');
+      quoteContent.style.removeProperty('overflow-y');
+      quoteContent.style.removeProperty('overflow-x');
       quoteContent.setAttribute('data-locomotive-scroll', 'ignore');
       quoteContent.setAttribute('data-scroll', 'ignore');
+      quoteContent.setAttribute('data-lenis-prevent', '');
       quoteContent.classList.add('quote-modal-scrollable');
     }
 
@@ -903,7 +921,10 @@ let systemInitialized=false;
       if (modalOpen) {
         window.disableLenisScroll(body);
         window.disableLenisScroll(html);
-        if (quoteContent) { quoteContent.removeAttribute('data-lenis-scroll'); quoteContent.style.overflowY = 'auto'; quoteContent.style.overflowX = 'hidden'; }
+        if (quoteContent) {
+          quoteContent.removeAttribute('data-lenis-scroll');
+          quoteContent.setAttribute('data-lenis-prevent', '');
+        }
       } else {
         window.enableLenisScroll(body);
         window.enableLenisScroll(html);
