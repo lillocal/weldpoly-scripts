@@ -487,9 +487,46 @@ let systemInitialized=false;
       host.classList.toggle('is-checked', !!checked);
     }
 
-    function bindMachineSelect(clone, meta, selected) {
+    function ensureMachineRemoveControl(clone, item) {
+      const actions = clone.querySelector('.quote_item-actions');
+      if (!actions) return;
+      let btn = actions.querySelector('[data-quote-remove]');
+      if (!btn) {
+        // Prefer cloning the Designer remove control from the part template when available.
+        const tplBtn = templatePartItem?.querySelector('[data-quote-remove]');
+        btn = tplBtn ? tplBtn.cloneNode(true) : document.createElement('a');
+        if (!tplBtn) {
+          btn.href = '#';
+          btn.className = 'quote_button-remove w-button';
+          btn.textContent = 'remove';
+        }
+        btn.setAttribute('data-quote-remove', '');
+        actions.appendChild(btn);
+      }
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeFromCart(item);
+      });
+    }
+
+    function bindMachineSelect(clone, meta, selected, hasParts) {
       const host = clone.querySelector('[data-quote-machine-select]') || clone.querySelector('.quote_item-select');
+
+      // Machine-only lines: the machine IS the quote item.
+      // Checkbox-to-remove is confusing UX — use Remove instead, hide the include checkbox.
+      if (!hasParts) {
+        if (host) {
+          host.style.display = 'none';
+          host.setAttribute('aria-hidden', 'true');
+        }
+        ensureMachineRemoveControl(clone, meta);
+        return;
+      }
+
       if (!host) return;
+      host.style.display = '';
+      host.removeAttribute('aria-hidden');
 
       // Remove native inputs injected by older script versions (they overlay the Designer SVG box).
       host.querySelectorAll('input[type="checkbox"][data-quote-machine-checkbox]').forEach((el) => el.remove());
@@ -508,7 +545,7 @@ let systemInitialized=false;
         return;
       }
 
-      // Designer control is the styled empty .quote_item-select div itself.
+      // With spare parts: checkbox = optionally include the full machine (parts stay either way).
       host.setAttribute('role', 'checkbox');
       host.setAttribute('tabindex', '0');
       host.setAttribute('aria-label', 'Request quote for full machine');
@@ -530,7 +567,7 @@ let systemInitialized=false;
       });
     }
 
-    function fillMachineRow(clone, item, selected) {
+    function fillMachineRow(clone, item, selected, hasParts) {
       const titleNode = clone.querySelector('[data-quote-title]');
       const descNodes = [...clone.querySelectorAll('[data-quote-description]')];
       if (titleNode) titleNode.textContent = 'Request quote for full machine';
@@ -553,7 +590,7 @@ let systemInitialized=false;
           imgEl.style.display = 'none';
         }
       }
-      bindMachineSelect(clone, item, selected);
+      bindMachineSelect(clone, item, selected, !!hasParts);
     }
 
     function refreshSparePartButtons() {
@@ -707,7 +744,7 @@ let systemInitialized=false;
           clone.removeAttribute('data-quote-item');
           clone.removeAttribute('data-quote-part-item');
           clone.removeAttribute('data-quote-other');
-          fillMachineRow(clone, item, group.machine.selected !== false);
+          fillMachineRow(clone, item, group.machine.selected !== false, group.parts.length > 0);
           wrapper.appendChild(clone);
           bindMachineAccordion(wrapper, clone, groupKey, group.parts.length > 0);
         }
@@ -767,7 +804,11 @@ let systemInitialized=false;
         if (item.isSparePart) ensureQtyControls(clone);
 
         if (isMachine) {
-          fillMachineRow(clone, item, entry.selected !== false);
+          const hasParts = cart.some((sp) => sp.isSparePart && (
+            (item.productSlug && sp.parentProductSlug === item.productSlug) ||
+            normT(sp.parentProductTitle) === normT(item.title)
+          ));
+          fillMachineRow(clone, item, entry.selected !== false, hasParts);
           pageListContainer.appendChild(clone);
           return;
         }
