@@ -273,6 +273,26 @@ let systemInitialized=false;
     function parentKeyFromPart(item) {
       return ((item && item.parentProductSlug) || '').trim() || normT(item && item.parentProductTitle);
     }
+    function machineKeys(item) {
+      const keys = [];
+      const slug = ((item && (item.productSlug || item.parentProductSlug)) || '').trim();
+      const title = normT(item && (item.title || item.parentProductTitle));
+      if (slug) keys.push(slug);
+      if (title) keys.push(title);
+      return keys;
+    }
+    function findPartGroupForMachine(item, partGroups) {
+      for (const key of machineKeys(item)) {
+        if (partGroups.has(key)) return [key, partGroups.get(key)];
+      }
+      const slug = ((item && item.productSlug) || '').trim();
+      const title = normT(item && item.title);
+      for (const [key, g] of partGroups.entries()) {
+        if (slug && ((g.meta.productSlug || '').trim() === slug)) return [key, g];
+        if (title && normT(g.meta.title) === title) return [key, g];
+      }
+      return [null, null];
+    }
     function machineMetaFromPart(sp) {
       return {
         title: (sp.parentProductTitle || '').trim(),
@@ -298,6 +318,7 @@ let systemInitialized=false;
       const order = [];
       const usedPartIdx = new Set();
       const partGroups = new Map();
+      let enriched = false;
 
       cart.forEach((item, idx) => {
         if (!item.isSparePart) return;
@@ -310,15 +331,20 @@ let systemInitialized=false;
 
       cart.forEach((item, idx) => {
         if (item.isSparePart) return;
-        const key = parentKeyFromMachine(item);
+        const [matchKey, g] = findPartGroupForMachine(item, partGroups);
+        // Backfill image/size from spare-part parent meta when the machine was added without them.
+        if (g) {
+          if (!item.productImage && g.meta.productImage) { item.productImage = g.meta.productImage; enriched = true; }
+          if (!item.productSizeRange && g.meta.productSizeRange) { item.productSizeRange = g.meta.productSizeRange; enriched = true; }
+          if (!item.productSlug && g.meta.productSlug) { item.productSlug = g.meta.productSlug; enriched = true; }
+        }
         order.push({ item, idx, kind: 'machine', selected: true });
-        const g = partGroups.get(key);
         if (g) {
           g.parts.forEach((p) => {
             order.push({ item: p.item, idx: p.idx, kind: 'part' });
             usedPartIdx.add(p.idx);
           });
-          partGroups.delete(key);
+          if (matchKey) partGroups.delete(matchKey);
         }
       });
 
@@ -333,6 +359,7 @@ let systemInitialized=false;
         });
       });
 
+      if (enriched) saveCart({ silent: true });
       return order;
     }
 
@@ -510,8 +537,12 @@ let systemInitialized=false;
         if (item.productImage) {
           imgEl.src = item.productImage;
           imgEl.alt = item.title || '';
+          imgEl.style.display = '';
+          imgEl.removeAttribute('hidden');
         } else {
-          imgEl.remove();
+          // Keep the slot for layout; hide until an image URL is known.
+          imgEl.removeAttribute('src');
+          imgEl.style.display = 'none';
         }
       }
       bindMachineSelect(clone, item, selected);
@@ -844,29 +875,73 @@ let systemInitialized=false;
     window.openQuoteModal = openQuoteModal;
     window.closeQuoteModal = closeQuoteModal;
 
+    function resolveProductImage(button) {
+      const fromAttr = (button.getAttribute('data-quote-image') || '').trim();
+      if (fromAttr) return fromAttr;
+
+      const root =
+        button.closest('.w-dyn-item') ||
+        button.closest('.card') ||
+        button.closest('[data-product-card]') ||
+        button.closest('.product_component') ||
+        null;
+
+      const candidates = [];
+      if (root) {
+        candidates.push(
+          ...root.querySelectorAll(
+            'img.card_image, img.product-header1_image, img[data-quote-product-image], img[data-product-image], img'
+          )
+        );
+      }
+      candidates.push(
+        ...document.querySelectorAll(
+          '[data-quote-product-image], .product-header1_image, img[data-product-image]'
+        )
+      );
+
+      for (const img of candidates) {
+        if (!img || img.tagName !== 'IMG') continue;
+        if (img.classList.contains('w-condition-invisible')) continue;
+        if (img.closest('.w-condition-invisible')) continue;
+        const src = (img.currentSrc || img.getAttribute('src') || '').trim();
+        if (!src) continue;
+        if (/placeholder|plugins\/Basic\/assets\/placeholder/i.test(src)) continue;
+        return src;
+      }
+      return '';
+    }
+
     function addProductToCart(button) {
       loadCart();
       const title = button.getAttribute('data-quote-title') || 'Unnamed item';
       const description = button.getAttribute('data-quote-description') || '';
       const slugSrc = button.getAttribute('data-quote-product-slug') || button.closest?.('[data-product-slug]')?.getAttribute?.('data-product-slug') || button.closest?.('.w-dyn-item')?.querySelector?.('[data-product-slug]')?.getAttribute?.('data-product-slug') || document.querySelector?.('[data-product-slug]')?.getAttribute?.('data-product-slug');
       const slug = (slugSrc || '').trim();
+      // Prefer explicit slug from the details link on category cards (…/products/{slug}).
+      let resolvedSlug = slug;
+      if (!resolvedSlug) {
+        const details = button.closest('.w-dyn-item, .card')?.querySelector('a[href*="/products/"]');
+        const href = details?.getAttribute('href') || '';
+        const m = href.match(/\/products\/([^\/?#]+)/);
+        if (m) resolvedSlug = decodeURIComponent(m[1]);
+      }
       const sizeRangeEl = button.closest?.('.w-dyn-item')?.querySelector?.('[data-product-size-range]') || document.querySelector?.('[data-product-size-range]');
-      const sizeRange = (button.getAttribute('data-quote-size-range') || (sizeRangeEl ? (sizeRangeEl.getAttribute?.('data-product-size-range')||sizeRangeEl.textContent||'').trim() : '')).trim();
-      const imageSrc = (
-        button.getAttribute('data-quote-image') ||
-        document.querySelector?.('[data-quote-product-image]')?.getAttribute?.('src') ||
-        document.querySelector?.('[data-quote-product-image]')?.getAttribute?.('data-quote-product-image') ||
-        document.querySelector?.('.product-header1_image')?.getAttribute?.('src') ||
-        ''
-      ).trim();
-      const existing = cart.find(i => !i.isSparePart && (i.title === title || (slug && i.productSlug === slug)));
+      let sizeRange = (button.getAttribute('data-quote-size-range') || (sizeRangeEl ? (sizeRangeEl.getAttribute?.('data-product-size-range')||sizeRangeEl.textContent||'').trim() : '')).trim();
+      // Category cards often put the size range in data-quote-description.
+      if (!sizeRange && /\d/.test(description) && /(mm|\"|inch)/i.test(description)) {
+        sizeRange = description.trim();
+      }
+      const imageSrc = resolveProductImage(button);
+      const existing = cart.find(i => !i.isSparePart && (i.title === title || (resolvedSlug && i.productSlug === resolvedSlug) || normT(i.title) === normT(title)));
       if (existing) {
         existing.qty = (existing.qty || 1) + 1;
         if (imageSrc && !existing.productImage) existing.productImage = imageSrc;
         if (sizeRange && !existing.productSizeRange) existing.productSizeRange = sizeRange;
+        if (resolvedSlug && !existing.productSlug) existing.productSlug = resolvedSlug;
       } else {
         const p = { title, description, qty: 1 };
-        if (slug) p.productSlug = slug;
+        if (resolvedSlug) p.productSlug = resolvedSlug;
         if (sizeRange) p.productSizeRange = sizeRange;
         if (imageSrc) p.productImage = imageSrc;
         cart.push(p);

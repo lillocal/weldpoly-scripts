@@ -17,6 +17,8 @@ All scripts are at the **repository root** (same level, no subfolders).
 - Handles `[data-add-quote]`, `[data-modal-target="quote-modal"]`
 - Closes modal via `.modal__btn-close` or `[data-modal-close]`
 
+**Designer contract (what each machine row must show):** see [`docs/quote-modal-component.md`](docs/quote-modal-component.md)
+
 **URL:**
 ```
 https://cdn.jsdelivr.net/gh/lillocal/weldpoly-scripts@main/weldpoly-quote-system.js
