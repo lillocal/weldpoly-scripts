@@ -359,6 +359,22 @@ let systemInitialized=false;
       refreshSparePartButtons();
     }
 
+    // Designer styles .quote_item-select as the checkbox (SVG background), not a native input.
+    if (!document.getElementById('quote-machine-select-style')) {
+      const st = document.createElement('style');
+      st.id = 'quote-machine-select-style';
+      st.textContent = [
+        '.quote_item-select{cursor:pointer;flex-shrink:0;}',
+        '.quote_item-select[aria-checked="true"],.quote_item-select.is-checked{',
+        'background-image:url(https://cdn.prod.website-files.com/6952d1b8123017b1e0a6472c/6a8e367b2495159db784efd4_check_box.svg)!important;',
+        'background-position:50%;background-repeat:no-repeat;background-size:contain;',
+        '}',
+        // Hide any leftover JS-injected native checkboxes from older script versions
+        '.quote_item-select > input[type="checkbox"][data-quote-machine-checkbox]{display:none!important;}'
+      ].join('');
+      document.head.appendChild(st);
+    }
+
     function syncWebflowCheckboxVisual(cb, checked) {
       if (!cb) return;
       cb.checked = !!checked;
@@ -370,24 +386,52 @@ let systemInitialized=false;
       if (custom) custom.classList.toggle('w--redirected-checked', !!checked);
     }
 
+    function setSelectHostState(host, checked) {
+      if (!host) return;
+      host.setAttribute('aria-checked', checked ? 'true' : 'false');
+      host.classList.toggle('is-checked', !!checked);
+    }
+
     function bindMachineSelect(clone, meta, selected) {
       const host = clone.querySelector('[data-quote-machine-select]') || clone.querySelector('.quote_item-select');
       if (!host) return;
-      // Prefer the Designer checkbox — never wipe/replace it (that caused double boxes).
-      let cb = host.querySelector('input[type="checkbox"]') ||
+
+      // Remove native inputs injected by older script versions (they overlay the Designer SVG box).
+      host.querySelectorAll('input[type="checkbox"][data-quote-machine-checkbox]').forEach((el) => el.remove());
+
+      const cb = host.querySelector('input[type="checkbox"]') ||
         clone.querySelector('[data-quote-machine-checkbox]');
-      if (!cb) {
-        cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.setAttribute('data-quote-machine-checkbox', '');
+
+      if (cb && !cb.hasAttribute('data-quote-machine-checkbox')) {
+        // Real Designer/Webflow form checkbox — wire it, don't invent another.
+        syncWebflowCheckboxVisual(cb, selected);
         cb.setAttribute('aria-label', 'Request quote for full machine');
-        host.appendChild(cb);
+        cb.addEventListener('change', () => {
+          syncWebflowCheckboxVisual(cb, cb.checked);
+          setMachineInQuote(meta, !!cb.checked);
+        });
+        return;
       }
-      syncWebflowCheckboxVisual(cb, selected);
-      cb.setAttribute('aria-label', 'Request quote for full machine');
-      cb.addEventListener('change', () => {
-        syncWebflowCheckboxVisual(cb, cb.checked);
-        setMachineInQuote(meta, !!cb.checked);
+
+      // Designer control is the styled empty .quote_item-select div itself.
+      host.setAttribute('role', 'checkbox');
+      host.setAttribute('tabindex', '0');
+      host.setAttribute('aria-label', 'Request quote for full machine');
+      setSelectHostState(host, selected);
+      const toggle = () => {
+        const next = host.getAttribute('aria-checked') !== 'true';
+        setSelectHostState(host, next);
+        setMachineInQuote(meta, next);
+      };
+      host.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+      });
+      host.addEventListener('keydown', (e) => {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        e.preventDefault();
+        toggle();
       });
     }
 
