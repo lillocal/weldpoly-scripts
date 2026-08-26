@@ -104,6 +104,16 @@ function getParentProductDescription(){
   return '';
 }
 
+function getParentProductImage(){
+  const byAttr=document.querySelector('[data-quote-product-image], [data-product-image]');
+  if(byAttr){
+    const src=(byAttr.getAttribute('data-quote-product-image')||byAttr.getAttribute('data-product-image')||byAttr.getAttribute('src')||'').trim();
+    if(src)return src;
+  }
+  const img=document.querySelector('.product-header1_image, .product_header-image img, .product-hero img');
+  return (img&&img.getAttribute('src')||'').trim();
+}
+
 function openQuoteModal(){
   if(typeof window.openQuoteModal==='function'){window.openQuoteModal();return;}
   const g=document.querySelector('[data-modal-group-status]');
@@ -166,6 +176,12 @@ function setSparePartQty(container,nextQty){
     const other=isOtherSparePart(title)||isDesignerOtherNode(container)||container.hasAttribute('data-quote-other-option');
     const sp={title:other?'Other':title,description:other?'':description,qty,isSparePart:true,parentProductTitle:parentTitle||''};
     if(parentSlug)sp.parentProductSlug=parentSlug;
+    const parentSize=getParentProductSizeRange();
+    const parentImage=getParentProductImage();
+    const parentDesc=getParentProductDescription();
+    if(parentSize)sp.parentProductSizeRange=parentSize;
+    if(parentImage)sp.parentProductImage=parentImage;
+    if(parentDesc)sp.parentProductDescription=parentDesc;
     if(other){sp.needsOtherDescription=true;sp.isOtherSparePart=true;}
     cart.push(sp);
   }
@@ -259,6 +275,12 @@ function toggleSparePartInQuote(trigger){
   const other=isOtherSparePart(title)||isDesignerOtherNode(container)||container.hasAttribute('data-quote-other-option');
   const sp={title:other?'Other':title,description:other?'':description,qty:1,isSparePart:true,parentProductTitle:parentTitle||''};
   if(parentSlug)sp.parentProductSlug=parentSlug;
+  const parentSize=getParentProductSizeRange();
+  const parentImage=getParentProductImage();
+  const parentDesc=getParentProductDescription();
+  if(parentSize)sp.parentProductSizeRange=parentSize;
+  if(parentImage)sp.parentProductImage=parentImage;
+  if(parentDesc)sp.parentProductDescription=parentDesc;
   if(other){
     sp.needsOtherDescription=true;
     sp.isOtherSparePart=true;
@@ -361,6 +383,8 @@ function setFullMachineInQuote(include){
       const prod={title,description:parentDesc||'',qty:1};
       if(slug)prod.productSlug=slug;
       if(sizeRange)prod.productSizeRange=sizeRange;
+      const image=getParentProductImage();
+      if(image)prod.productImage=image;
       cart.push(prod);
     }
   }else if(idx>=0){

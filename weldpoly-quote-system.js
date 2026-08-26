@@ -24,7 +24,8 @@ let systemInitialized=false;
         '[data-quote-other]{display:none!important;}',
         '[data-quote-other-description]{display:block;width:100%;margin-top:0.35rem;padding:0.5rem 0.65rem;border:1px solid rgba(0,0,0,0.18);border-radius:4px;font:inherit;line-height:1.35;background:#fff;color:inherit;box-sizing:border-box;}',
         '[data-quote-other-description]:focus{outline:2px solid rgba(0,0,0,0.35);outline-offset:1px;}',
-        '.quote_item-input-other{width:100%;}'
+        '.quote_item-input-other{width:100%;}',
+        '.quote_item-select input[type="checkbox"]{width:1.15rem;height:1.15rem;accent-color:#f5a623;cursor:pointer;}'
       ].join('');
       document.head.appendChild(st);
     }
@@ -266,22 +267,131 @@ let systemInitialized=false;
       return null;
     }
 
+    const normT=t=>(t||'').trim().toLowerCase().replace(/\s+/g,' ');
+    function parentKeyFromMachine(item) {
+      return ((item && item.productSlug) || '').trim() || normT(item && item.title);
+    }
+    function parentKeyFromPart(item) {
+      return ((item && item.parentProductSlug) || '').trim() || normT(item && item.parentProductTitle);
+    }
+    function machineMetaFromPart(sp) {
+      return {
+        title: (sp.parentProductTitle || '').trim(),
+        description: (sp.parentProductDescription || '').trim(),
+        productSlug: (sp.parentProductSlug || '').trim(),
+        productSizeRange: (sp.parentProductSizeRange || '').trim(),
+        productImage: (sp.parentProductImage || '').trim(),
+        qty: 1,
+        isSparePart: false
+      };
+    }
+    function enrichMachineMeta(base, extra) {
+      const out = { ...base };
+      ['title', 'description', 'productSlug', 'productSizeRange', 'productImage'].forEach((k) => {
+        if (!(out[k] || '').trim() && (extra[k] || '').trim()) out[k] = extra[k];
+      });
+      return out;
+    }
+
+    // Groups machines with their spare parts. If parts exist without the machine in cart,
+    // still insert a data-quote-item header (unchecked) so the parent product is visible.
     function buildCartOrder() {
-      const norm = t => (t || '').trim().toLowerCase();
       const order = [];
+      const usedPartIdx = new Set();
+      const partGroups = new Map();
+
       cart.forEach((item, idx) => {
-        if (!item.isSparePart) {
-          order.push({ item, idx });
-          cart.forEach((sp, j) => {
-            const same=(sp.isSparePart)&&(item.productSlug&&sp.parentProductSlug===item.productSlug||norm(sp.parentProductTitle)===norm(item.title));
-            if(same)order.push({ item: sp, idx: j });
+        if (!item.isSparePart) return;
+        const key = parentKeyFromPart(item) || `__orphan_${idx}`;
+        if (!partGroups.has(key)) partGroups.set(key, { meta: machineMetaFromPart(item), parts: [] });
+        const g = partGroups.get(key);
+        g.meta = enrichMachineMeta(g.meta, machineMetaFromPart(item));
+        g.parts.push({ item, idx });
+      });
+
+      cart.forEach((item, idx) => {
+        if (item.isSparePart) return;
+        const key = parentKeyFromMachine(item);
+        order.push({ item, idx, kind: 'machine', selected: true });
+        const g = partGroups.get(key);
+        if (g) {
+          g.parts.forEach((p) => {
+            order.push({ item: p.item, idx: p.idx, kind: 'part' });
+            usedPartIdx.add(p.idx);
           });
+          partGroups.delete(key);
         }
       });
-      cart.forEach((item, idx) => {
-        if (item.isSparePart && !order.some(o => o.idx === idx)) order.push({ item, idx });
+
+      partGroups.forEach((g, key) => {
+        const hasParent = !String(key).startsWith('__orphan_') && !!(g.meta.title || g.meta.productSlug);
+        if (hasParent) {
+          order.push({ item: g.meta, idx: -1, kind: 'machine', selected: false, referenceOnly: true });
+        }
+        g.parts.forEach((p) => {
+          if (usedPartIdx.has(p.idx)) return;
+          order.push({ item: p.item, idx: p.idx, kind: 'part' });
+        });
       });
+
       return order;
+    }
+
+    function setMachineInQuote(meta, include) {
+      loadCart();
+      const slug = (meta.productSlug || '').trim();
+      const title = (meta.title || '').trim();
+      const idx = cart.findIndex((i) => !i.isSparePart && ((slug && i.productSlug === slug) || normT(i.title) === normT(title)));
+      if (include) {
+        if (idx < 0) {
+          const p = { title: title || 'Product', description: meta.description || '', qty: 1 };
+          if (slug) p.productSlug = slug;
+          if (meta.productSizeRange) p.productSizeRange = meta.productSizeRange;
+          if (meta.productImage) p.productImage = meta.productImage;
+          cart.push(p);
+        }
+      } else if (idx >= 0) {
+        cart.splice(idx, 1);
+      }
+      saveCart();
+      renderCart();
+      updateNavQty();
+      renderRequestQuotePageList();
+      refreshSparePartButtons();
+    }
+
+    function bindMachineSelect(clone, meta, selected) {
+      const host = clone.querySelector('.quote_item-select');
+      if (!host) return;
+      host.innerHTML = '';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!selected;
+      cb.setAttribute('aria-label', 'Request quote for full machine');
+      cb.addEventListener('change', () => setMachineInQuote(meta, !!cb.checked));
+      host.appendChild(cb);
+    }
+
+    function fillMachineRow(clone, item, selected) {
+      const titleNode = clone.querySelector('[data-quote-title]');
+      const descNodes = [...clone.querySelectorAll('[data-quote-description]')];
+      if (titleNode) titleNode.textContent = 'Request quote for full machine';
+      if (descNodes[0]) descNodes[0].textContent = item.title || '';
+      if (descNodes[1]) {
+        const unit = (item.productSizeRange || item.description || '').trim();
+        descNodes[1].textContent = unit;
+        descNodes[1].style.display = unit ? '' : 'none';
+      }
+      const imgEl = clone.querySelector('[data-quote-image]');
+      if (imgEl) {
+        if (item.productImage) {
+          imgEl.src = item.productImage;
+          imgEl.alt = item.title || '';
+        } else {
+          imgEl.remove();
+        }
+      }
+      bindMachineSelect(clone, item, selected);
     }
 
     function refreshSparePartButtons() {
@@ -289,7 +399,6 @@ let systemInitialized=false;
     }
 
     function itemKey(o){return (o.isSparePart?'p':'n')+'\x01'+(o.title||'')+'\x01'+(o.parentProductSlug||o.parentProductTitle||'');}
-    const normT=t=>(t||'').trim().toLowerCase().replace(/\s+/g,' ');
     function removeFromCart(item){
       loadCart();
       // Machines and spare parts are independent lines: removing one never cascades to the other.
@@ -349,9 +458,11 @@ let systemInitialized=false;
       const descSel=['[data-quote-description]','[data-quote-part-machine]','[data-quote-part-code]','.quote_part-item-description','.quote_part-item_description','.quote_item-description','.quote_part-description','.quote_item_content p:nth-of-type(2)','.quote_item_content p:last-of-type','.quote_item_content > *:nth-child(2)','.quote_item_content > *:last-child'];
 
       const ins=emptyState||null;
-      order.forEach(({item,idx})=>{
+      order.forEach((entry)=>{
+        const item = entry.item;
         const isSparePart = item.isSparePart === true;
         const isOther = isOtherSparePart(item);
+        const isMachine = !isSparePart;
         const template = (isOther && templateOtherItem) ? templateOtherItem : (isSparePart ? templatePart : templateItem);
         const clone = template.cloneNode(true);
         clone.style.display = 'flex';
@@ -360,6 +471,12 @@ let systemInitialized=false;
         clone.removeAttribute('data-quote-other');
         if (isSparePart) clone.classList.add('quote_part-item');
         if (isSparePart) ensureQtyControls(clone);
+
+        if (isMachine) {
+          fillMachineRow(clone, item, entry.selected !== false);
+          ins?quoteContent.insertBefore(clone,ins):quoteContent.appendChild(clone);
+          return;
+        }
 
         const titleNode=findInClone(clone,titleSel)||clone.querySelector('[data-quote-title]');
         const descNode=findInClone(clone,descSel)||clone.querySelector('[data-quote-description]');
@@ -372,31 +489,26 @@ let systemInitialized=false;
         const sizeText=item.productSizeRange||'';
         const parentTitle=(item.parentProductTitle||'').trim();
         const fullDesc=sizeRangeNode ? descText : (sizeText && descText ? sizeText+'\n'+descText : (sizeText||descText));
-        if (isSparePart) {
-          // Always show the parent machine as the reference product on spare-part lines.
-          if (partMachineNode) {
-            partMachineNode.textContent = parentTitle;
-            partMachineNode.style.display = parentTitle ? '' : 'none';
-          }
-          if (isOther) {
-            const otherHost =
-              clone.querySelector('.quote_item-input-other') ||
-              clone.querySelector('[data-quote-other-input]') ||
-              partCodeNode ||
-              descNode;
-            attachOtherDescriptionField(otherHost, item, { focus: !!item.needsOtherDescription });
-            if (sizeRangeNode) sizeRangeNode.style.display = 'none';
-          } else if (partCodeNode || partMachineNode) {
-            if (partCodeNode) {
-              partCodeNode.textContent = descText;
-              partCodeNode.style.display = descText ? '' : 'none';
-            }
-          } else {
-            if (descNode) descNode.textContent = parentTitle ? (descText ? descText + '\n' + parentTitle : parentTitle) : fullDesc;
-            if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
+        // Parent machine is shown via the data-quote-item header above the parts.
+        if (partMachineNode) {
+          partMachineNode.textContent = parentTitle;
+          partMachineNode.style.display = parentTitle ? '' : 'none';
+        }
+        if (isOther) {
+          const otherHost =
+            clone.querySelector('.quote_item-input-other') ||
+            clone.querySelector('[data-quote-other-input]') ||
+            partCodeNode ||
+            descNode;
+          attachOtherDescriptionField(otherHost, item, { focus: !!item.needsOtherDescription });
+          if (sizeRangeNode) sizeRangeNode.style.display = 'none';
+        } else if (partCodeNode || partMachineNode) {
+          if (partCodeNode) {
+            partCodeNode.textContent = descText;
+            partCodeNode.style.display = descText ? '' : 'none';
           }
         } else {
-          if (descNode) descNode.textContent = fullDesc;
+          if (descNode) descNode.textContent = parentTitle ? (descText ? descText + '\n' + parentTitle : parentTitle) : fullDesc;
           if (sizeRangeNode) sizeRangeNode.textContent = sizeText;
         }
         if (qtyEl) {
@@ -405,7 +517,7 @@ let systemInitialized=false;
           const inner = qtyEl.querySelector('div');
           if (inner) inner.textContent = q;
         }
-        if (isSparePart && !titleNode && !descNode && !partMachineNode) {
+        if (!titleNode && !descNode && !partMachineNode) {
           const partContent = clone.querySelector('[data-quote-part-content]') || clone.querySelector('.quote_item_content');
           if (partContent) partContent.textContent = ((item.title || '') + ' ' + (item.description || '') + (parentTitle ? ' — ' + parentTitle : '')).trim();
         }
@@ -449,13 +561,16 @@ let systemInitialized=false;
         ) el.remove();
       });
       const order = buildCartOrder();
-      order.forEach(({ item, idx }) => {
+      order.forEach((entry) => {
+        const item = entry.item;
         const isOther = isOtherSparePart(item);
+        const isMachine = !item.isSparePart;
         const otherTpl = pageOtherTemplate || templateOtherItem;
         const partTpl = pagePartTemplate || templatePartItem;
-        const itemTemplate = (isOther && otherTpl)
-          ? otherTpl
-          : ((item.isSparePart && partTpl) ? partTpl : template);
+        const machineTpl = pageTemplate || templateItem;
+        const itemTemplate = isMachine
+          ? machineTpl
+          : ((isOther && otherTpl) ? otherTpl : ((item.isSparePart && partTpl) ? partTpl : template));
         const clone = itemTemplate.cloneNode(true);
         clone.style.display = 'flex';
         clone.removeAttribute('data-quote-placeholder');
@@ -464,6 +579,13 @@ let systemInitialized=false;
         clone.removeAttribute('data-quote-other');
         if (item.isSparePart) clone.classList.add('quote_part-item');
         if (item.isSparePart) ensureQtyControls(clone);
+
+        if (isMachine) {
+          fillMachineRow(clone, item, entry.selected !== false);
+          pageListContainer.appendChild(clone);
+          return;
+        }
+
         const tEl = clone.querySelector('[data-quote-title]') || clone.querySelector('[data-quote-part-name]') || clone.querySelector('.quote_item-title');
         const dEl = clone.querySelector('[data-quote-description]') || clone.querySelector('[data-quote-part-machine]') || clone.querySelector('[data-quote-part-code]') || clone.querySelector('.quote_item-description');
         const sEl = clone.querySelector('[data-quote-size-range]');
@@ -474,31 +596,26 @@ let systemInitialized=false;
         const fullD=sEl ? descT : (sizeT && descT ? sizeT+'\n'+descT : (sizeT||descT));
         const partMachineNode=clone.querySelector('[data-quote-part-machine]');
         const partCodeNode=clone.querySelector('[data-quote-part-code]');
-        if (item.isSparePart) {
-          if (partMachineNode) {
-            partMachineNode.textContent = parentTitle;
-            partMachineNode.style.display = parentTitle ? '' : 'none';
-          }
-          if (isOther) {
-            const pageDesc =
-              clone.querySelector('.quote_item-input-other') ||
-              clone.querySelector('[data-quote-other-input]') ||
-              partCodeNode ||
-              dEl ||
-              clone.querySelector('.quote_item-description');
-            attachOtherDescriptionField(pageDesc, item, { focus: false });
-            if (sEl) sEl.style.display = 'none';
-          } else if (partCodeNode || partMachineNode) {
-            if (partCodeNode) {
-              partCodeNode.textContent = descT;
-              partCodeNode.style.display = descT ? '' : 'none';
-            }
-          } else {
-            if (dEl) dEl.textContent = parentTitle ? (descT ? descT + '\n' + parentTitle : parentTitle) : fullD;
-            if (sEl) sEl.textContent = sizeT;
+        if (partMachineNode) {
+          partMachineNode.textContent = parentTitle;
+          partMachineNode.style.display = parentTitle ? '' : 'none';
+        }
+        if (isOther) {
+          const pageDesc =
+            clone.querySelector('.quote_item-input-other') ||
+            clone.querySelector('[data-quote-other-input]') ||
+            partCodeNode ||
+            dEl ||
+            clone.querySelector('.quote_item-description');
+          attachOtherDescriptionField(pageDesc, item, { focus: false });
+          if (sEl) sEl.style.display = 'none';
+        } else if (partCodeNode || partMachineNode) {
+          if (partCodeNode) {
+            partCodeNode.textContent = descT;
+            partCodeNode.style.display = descT ? '' : 'none';
           }
         } else {
-          if (dEl) dEl.textContent = fullD;
+          if (dEl) dEl.textContent = parentTitle ? (descT ? descT + '\n' + parentTitle : parentTitle) : fullD;
           if (sEl) sEl.textContent = sizeT;
         }
         if (qEl) { const q = item.qty || 1; qEl.textContent = q; const i = qEl.querySelector('div'); if (i) i.textContent = q; }
@@ -588,9 +705,25 @@ let systemInitialized=false;
       const slug = (slugSrc || '').trim();
       const sizeRangeEl = button.closest?.('.w-dyn-item')?.querySelector?.('[data-product-size-range]') || document.querySelector?.('[data-product-size-range]');
       const sizeRange = (button.getAttribute('data-quote-size-range') || (sizeRangeEl ? (sizeRangeEl.getAttribute?.('data-product-size-range')||sizeRangeEl.textContent||'').trim() : '')).trim();
-      const existing = cart.find(i => i.title === title || (slug && i.productSlug === slug));
-      if (existing) existing.qty++;
-      else { const p = { title, description, qty: 1 }; if (slug) p.productSlug = slug; if (sizeRange) p.productSizeRange = sizeRange; cart.push(p); }
+      const imageSrc = (
+        button.getAttribute('data-quote-image') ||
+        document.querySelector?.('[data-quote-product-image]')?.getAttribute?.('src') ||
+        document.querySelector?.('[data-quote-product-image]')?.getAttribute?.('data-quote-product-image') ||
+        document.querySelector?.('.product-header1_image')?.getAttribute?.('src') ||
+        ''
+      ).trim();
+      const existing = cart.find(i => !i.isSparePart && (i.title === title || (slug && i.productSlug === slug)));
+      if (existing) {
+        existing.qty = (existing.qty || 1) + 1;
+        if (imageSrc && !existing.productImage) existing.productImage = imageSrc;
+        if (sizeRange && !existing.productSizeRange) existing.productSizeRange = sizeRange;
+      } else {
+        const p = { title, description, qty: 1 };
+        if (slug) p.productSlug = slug;
+        if (sizeRange) p.productSizeRange = sizeRange;
+        if (imageSrc) p.productImage = imageSrc;
+        cart.push(p);
+      }
       renderCart();
       saveCart();
       updateNavQty();
