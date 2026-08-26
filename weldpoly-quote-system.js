@@ -407,10 +407,10 @@ let systemInitialized=false;
         'background-position:50%;background-repeat:no-repeat;background-size:contain;',
         '}',
         '.quote_item-select > input[type="checkbox"][data-quote-machine-checkbox]{display:none!important;}',
-        '.quote_item-wrapper[data-quote-group]{display:flex;flex-direction:column;width:100%;}',
+        '.quote_group[data-quote-group],.quote_item-wrapper[data-quote-group]{display:flex;flex-direction:column;width:100%;}',
         '.quote_item-chevron{cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .2s ease;transform-origin:center;}',
-        '.quote_item-wrapper[data-accordion-open="false"] .quote_item-chevron{transform:rotate(-90deg);}',
-        '.quote_item-wrapper[data-accordion-open="false"] .quote_part-item{display:none!important;}',
+        '.quote_group[data-accordion-open="false"] .quote_item-chevron,.quote_item-wrapper[data-accordion-open="false"] .quote_item-chevron{transform:rotate(-90deg);}',
+        '.quote_group[data-accordion-open="false"] .quote_part-item,.quote_item-wrapper[data-accordion-open="false"] .quote_part-item{display:none!important;}',
         '.quote_item-chevron.is-disabled{visibility:hidden;pointer-events:none;}'
       ].join('');
       document.head.appendChild(st);
@@ -730,8 +730,11 @@ let systemInitialized=false;
       }
 
       groups.forEach((group) => {
+        const hasParts = group.parts.length > 0;
         const wrapper = document.createElement('div');
-        wrapper.className = 'quote_item-wrapper';
+        // Designer .quote_group = separator border. Required when spare parts belong to a machine;
+        // also applied to machine-only rows so consecutive items stay visually distinct.
+        wrapper.className = hasParts ? 'quote_group' : 'quote_group quote_item-wrapper';
         const groupKey = group.machine
           ? (parentKeyFromMachine(group.machine.item) || ('m_' + groups.indexOf(group)))
           : ('orphan_' + groups.indexOf(group));
@@ -744,9 +747,9 @@ let systemInitialized=false;
           clone.removeAttribute('data-quote-item');
           clone.removeAttribute('data-quote-part-item');
           clone.removeAttribute('data-quote-other');
-          fillMachineRow(clone, item, group.machine.selected !== false, group.parts.length > 0);
+          fillMachineRow(clone, item, group.machine.selected !== false, hasParts);
           wrapper.appendChild(clone);
-          bindMachineAccordion(wrapper, clone, groupKey, group.parts.length > 0);
+          bindMachineAccordion(wrapper, clone, groupKey, hasParts);
         }
 
         group.parts.forEach((entry) => {
