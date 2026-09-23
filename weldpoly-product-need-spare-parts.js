@@ -23,9 +23,18 @@
     var st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = [
+      /* Secondary buttons on this site use white text for dark sections;
+         force readable contrast on the light product header. */
       '[' + BTN_ATTR + ']{',
       'display:inline-flex;align-items:center;justify-content:center;',
       'margin-top:1rem;margin-bottom:0.25rem;',
+      'color:#1c1c1c!important;',
+      'background-color:transparent!important;',
+      'border-color:#f29c38!important;',
+      '}',
+      '[' + BTN_ATTR + ']:hover{',
+      'color:#1c1c1c!important;',
+      'background-color:rgba(242,156,56,0.12)!important;',
       '}',
       '.product-header1_accordion[' + 'data-spare-section' + ']{scroll-margin-top:6rem;}'
     ].join('');
