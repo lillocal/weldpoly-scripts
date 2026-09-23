@@ -1,15 +1,16 @@
 /**
  * Weldpoly — Spare Parts trailing card (item 29)
- * Permanent final card after CMS results on /spare-parts.
- * Placed AFTER the dyn-list wrapper so Finsweet empty-state (display:none on list)
- * never hides it. CTA → /contact-us?topic=spare-parts (prefills Message).
+ * Last cell inside the product CMS grid on /spare-parts.
+ * Re-appends after Finsweet filter/sort (which can wipe list children)
+ * and forces the grid visible when the list would otherwise be empty.
+ * CTA → /contact-us?topic=spare-parts (prefills Message).
  */
 (function () {
   'use strict';
 
   var CARD_ATTR = 'data-spare-trailing-card';
-  var WRAP_ATTR = 'data-spare-trailing-wrap';
   var STYLE_ID = 'weldpoly-spare-trailing-style';
+  var FORCED_ATTR = 'data-spare-trailing-forced';
   var TOPIC = 'spare-parts';
   var CONTACT_PATH = '/contact-us';
   var PREFILL =
@@ -28,16 +29,9 @@
     var st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = [
-      '[' + WRAP_ATTR + ']{',
-      'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;width:100%;',
-      '}',
-      '@media screen and (max-width:991px){',
-      '[' + WRAP_ATTR + ']{grid-template-columns:repeat(2,minmax(0,1fr));}',
-      '}',
-      '@media screen and (max-width:767px){',
-      '[' + WRAP_ATTR + ']{grid-template-columns:minmax(0,1fr);}',
-      '}',
-      '[' + CARD_ATTR + ']{display:flex;height:100%;min-height:16rem;}',
+      /* legacy wrap from earlier placement — hide if any remain */
+      '[data-spare-trailing-wrap]{display:none!important;}',
+      '.cms_list.product-list [' + CARD_ATTR + ']{display:flex;height:100%;min-height:16rem;}',
       '.spare-trailing_card{',
       'display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:1rem;',
       'box-sizing:border-box;width:100%;min-height:100%;padding:1.75rem 1.5rem;',
@@ -57,7 +51,7 @@
   function buildCard() {
     var item = document.createElement('div');
     item.setAttribute(CARD_ATTR, '');
-    item.className = 'spare-parts-trailing';
+    item.className = 'cms_list-item spare-parts-trailing';
     item.setAttribute('role', 'listitem');
 
     var card = document.createElement('div');
@@ -84,40 +78,56 @@
     return item;
   }
 
-  function findListWrapper() {
-    var list =
+  function findList() {
+    return (
       document.querySelector('.section_products-list .cms_list.product-list') ||
-      document.querySelector('.cms_list.product-list');
-    if (!list) return null;
-    return list.closest('.cms_list-wrapper') || list.parentElement;
+      document.querySelector('.cms_list.product-list') ||
+      document.querySelector('.cms_list.w-dyn-items')
+    );
+  }
+
+  function getOrCreateCard() {
+    var existing = document.querySelector('[' + CARD_ATTR + ']');
+    if (existing) return existing;
+    return buildCard();
+  }
+
+  function syncListVisibility(list) {
+    var dynCount = list.querySelectorAll('.w-dyn-item').length;
+    if (dynCount > 0) {
+      if (list.hasAttribute(FORCED_ATTR)) {
+        list.style.removeProperty('display');
+        list.removeAttribute(FORCED_ATTR);
+      }
+      return;
+    }
+    // No CMS results — keep the grid up so the trailing card stays in layout
+    list.style.setProperty('display', 'grid', 'important');
+    list.setAttribute(FORCED_ATTR, '1');
   }
 
   function placeCard() {
-    var wrap = findListWrapper();
-    if (!wrap || !wrap.parentElement) return false;
+    var list = findList();
+    if (!list) return false;
     ensureStyles();
 
-    var host = wrap.parentElement.querySelector('[' + WRAP_ATTR + ']');
-    if (!host) {
-      host = document.createElement('div');
-      host.setAttribute(WRAP_ATTR, '');
-      host.className = 'spare-trailing-wrap';
-      wrap.insertAdjacentElement('afterend', host);
-    } else if (host.previousElementSibling !== wrap) {
-      wrap.insertAdjacentElement('afterend', host);
-    }
+    // Remove previous outside-grid placement
+    document.querySelectorAll('[data-spare-trailing-wrap]').forEach(function (el) {
+      el.remove();
+    });
 
-    var card = host.querySelector('[' + CARD_ATTR + ']');
-    if (!card) host.appendChild(buildCard());
+    var card = getOrCreateCard();
+    if (list.lastElementChild !== card) list.appendChild(card);
+    syncListVisibility(list);
     return true;
   }
 
   function watchList() {
-    var wrap = findListWrapper();
-    var list = wrap && (wrap.querySelector('.cms_list.product-list') || wrap.querySelector('.cms_list'));
+    var list = findList();
     if (!list || list.__weldpolyTrailingObserved) return;
     list.__weldpolyTrailingObserved = true;
     new MutationObserver(function () {
+      // Finsweet may wipe children or toggle display:none — restore card last
       placeCard();
     }).observe(list, { childList: true, attributes: true, attributeFilter: ['style', 'class'] });
   }
