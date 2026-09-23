@@ -1,12 +1,14 @@
 /**
  * Weldpoly — Spare Parts trailing card (item 29)
- * Injects a permanent final card after CMS results on /spare-parts.
- * CTA → /contact-us?topic=spare-parts (pre-fills the contact Message field).
+ * Permanent final card after CMS results on /spare-parts.
+ * Placed AFTER the dyn-list wrapper so Finsweet empty-state (display:none on list)
+ * never hides it. CTA → /contact-us?topic=spare-parts (prefills Message).
  */
 (function () {
   'use strict';
 
   var CARD_ATTR = 'data-spare-trailing-card';
+  var WRAP_ATTR = 'data-spare-trailing-wrap';
   var STYLE_ID = 'weldpoly-spare-trailing-style';
   var TOPIC = 'spare-parts';
   var CONTACT_PATH = '/contact-us';
@@ -26,7 +28,16 @@
     var st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = [
-      '.cms_list.product-list [' + CARD_ATTR + ']{display:flex;height:100%;}',
+      '[' + WRAP_ATTR + ']{',
+      'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;width:100%;',
+      '}',
+      '@media screen and (max-width:991px){',
+      '[' + WRAP_ATTR + ']{grid-template-columns:repeat(2,minmax(0,1fr));}',
+      '}',
+      '@media screen and (max-width:767px){',
+      '[' + WRAP_ATTR + ']{grid-template-columns:minmax(0,1fr);}',
+      '}',
+      '[' + CARD_ATTR + ']{display:flex;height:100%;min-height:16rem;}',
       '.spare-trailing_card{',
       'display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:1rem;',
       'box-sizing:border-box;width:100%;min-height:100%;padding:1.75rem 1.5rem;',
@@ -46,7 +57,7 @@
   function buildCard() {
     var item = document.createElement('div');
     item.setAttribute(CARD_ATTR, '');
-    item.className = 'cms_list-item spare-parts-trailing';
+    item.className = 'spare-parts-trailing';
     item.setAttribute('role', 'listitem');
 
     var card = document.createElement('div');
@@ -73,32 +84,42 @@
     return item;
   }
 
-  function findList() {
-    return (
+  function findListWrapper() {
+    var list =
       document.querySelector('.section_products-list .cms_list.product-list') ||
-      document.querySelector('.cms_list.product-list') ||
-      document.querySelector('.cms_list.w-dyn-items')
-    );
+      document.querySelector('.cms_list.product-list');
+    if (!list) return null;
+    return list.closest('.cms_list-wrapper') || list.parentElement;
   }
 
   function placeCard() {
-    var list = findList();
-    if (!list) return false;
+    var wrap = findListWrapper();
+    if (!wrap || !wrap.parentElement) return false;
     ensureStyles();
-    var existing = list.querySelector('[' + CARD_ATTR + ']');
-    if (!existing) existing = buildCard();
-    if (list.lastElementChild !== existing) list.appendChild(existing);
+
+    var host = wrap.parentElement.querySelector('[' + WRAP_ATTR + ']');
+    if (!host) {
+      host = document.createElement('div');
+      host.setAttribute(WRAP_ATTR, '');
+      host.className = 'spare-trailing-wrap';
+      wrap.insertAdjacentElement('afterend', host);
+    } else if (host.previousElementSibling !== wrap) {
+      wrap.insertAdjacentElement('afterend', host);
+    }
+
+    var card = host.querySelector('[' + CARD_ATTR + ']');
+    if (!card) host.appendChild(buildCard());
     return true;
   }
 
   function watchList() {
-    var list = findList();
+    var wrap = findListWrapper();
+    var list = wrap && (wrap.querySelector('.cms_list.product-list') || wrap.querySelector('.cms_list'));
     if (!list || list.__weldpolyTrailingObserved) return;
     list.__weldpolyTrailingObserved = true;
-    var mo = new MutationObserver(function () {
+    new MutationObserver(function () {
       placeCard();
-    });
-    mo.observe(list, { childList: true });
+    }).observe(list, { childList: true, attributes: true, attributeFilter: ['style', 'class'] });
   }
 
   function prefillContactForm() {
