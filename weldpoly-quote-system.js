@@ -37,6 +37,27 @@ let systemInitialized=false;
       document.head.appendChild(st);
     }
 
+    // Nav quote badge: Webflow hides .quote_icon (clipboard), which also hid [data-nav-quote-qty].
+    // Keep the SVG hidden; expose only the orange qty pill on the "get a quote" CTA.
+    if (!document.getElementById('quote-nav-qty-style')) {
+      const st = document.createElement('style');
+      st.id = 'quote-nav-qty-style';
+      st.textContent = [
+        '.right-nav .nav_button{position:relative;}',
+        '.right-nav .quote_icon{',
+        'display:block!important;position:absolute;top:0;right:0;width:0;height:0;',
+        'overflow:visible;pointer-events:none;',
+        '}',
+        '.right-nav .quote_icon > svg,.right-nav .quote_icon .nav__icon{display:none!important;}',
+        '.right-nav [data-nav-quote-qty],.right-nav .quote_qty{',
+        'z-index:2;min-width:1.125rem;width:auto;height:1.125rem;padding:0 .35rem;',
+        'box-sizing:border-box;font-size:.625rem;font-weight:600;line-height:1;',
+        'letter-spacing:0;inset:-0.35rem -0.45rem auto auto;',
+        '}'
+      ].join('');
+      document.head.appendChild(st);
+    }
+
     const modalGroup = document.querySelector('[data-modal-group-status]');
     const quoteModal = document.querySelector('[data-modal-name="quote-modal"]');
     const quoteContent = quoteModal?.querySelector('.quote_modal-content');
@@ -194,16 +215,47 @@ let systemInitialized=false;
       try { document.dispatchEvent(new CustomEvent('quoteCartUpdated')); } catch (_) {}
     }
 
-    const navQty = document.querySelector('[data-nav-quote-qty]');
+    function ensureNavQtyBadge() {
+      let el = document.querySelector('[data-nav-quote-qty]');
+      if (el) return el;
+      const host = document.querySelector('.right-nav .nav_button') || document.querySelector('a.right-nav');
+      if (!host) return null;
+      el = document.createElement('div');
+      el.setAttribute('data-nav-quote-qty', '');
+      el.className = 'quote_qty';
+      el.style.display = 'none';
+      el.setAttribute('hidden', '');
+      el.setAttribute('aria-hidden', 'true');
+      el.innerHTML = '<div></div>';
+      host.appendChild(el);
+      return el;
+    }
+
     function updateNavQty() {
-      if (!navQty) return;
-      if (cart.length === 0) {
-        navQty.style.display = 'none';
-        navQty.textContent = '';
-      } else {
-        navQty.style.display = 'flex';
-        navQty.textContent = cart.length;
-      }
+      ensureNavQtyBadge();
+      const badges = document.querySelectorAll('[data-nav-quote-qty]');
+      if (!badges.length) return;
+      const count = Array.isArray(cart) ? cart.length : 0;
+      badges.forEach((navQty) => {
+        if (count === 0) {
+          navQty.style.display = 'none';
+          navQty.setAttribute('hidden', '');
+          navQty.setAttribute('aria-hidden', 'true');
+          navQty.removeAttribute('aria-label');
+          const inner = navQty.querySelector('div');
+          if (inner) inner.textContent = '';
+          else navQty.textContent = '';
+        } else {
+          navQty.style.display = 'flex';
+          navQty.removeAttribute('hidden');
+          navQty.setAttribute('aria-hidden', 'false');
+          navQty.setAttribute('aria-label', count === 1 ? '1 item in quote cart' : count + ' items in quote cart');
+          const label = String(count);
+          const inner = navQty.querySelector('div');
+          if (inner) inner.textContent = label;
+          else navQty.textContent = label;
+        }
+      });
     }
     window.updateNavQty = updateNavQty;
 
